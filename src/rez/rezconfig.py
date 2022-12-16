@@ -55,7 +55,7 @@ import os
 
 ### Do not move or delete this comment (__DOC_START__)
 
-ENVL_CUSTOM_PATH = "~/AppData/Local/TMA/ENVlaunch/rez"
+ENVL_CUSTOM_PATH = "~/AppData/Local/TMA/ENVlaunch"
 
 # The package search path. Rez uses this to find packages. A package with the
 # same name and version in an earlier path takes precedence.
