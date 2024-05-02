@@ -47,6 +47,7 @@ attention to the comment formatting and follow the existing style closely.
 # flake8: noqa
 
 import os
+import sys
 
 
 ###############################################################################
@@ -54,23 +55,27 @@ import os
 ###############################################################################
 
 ### Do not move or delete this comment (__DOC_START__)
-
-ENVL_CUSTOM_PATH = "~/AppData/Local/TMA/ENVlaunch"
+if 'win' in sys.platform:
+   ENVL_CUSTOM_PATH = "~/AppData/Local/TMA/ENVlaunch"
+elif 'darwin' in sys.platform:
+   ENVL_CUSTOM_PATH = "~/Library/Application Support/TMA/ENVlaunch"
+else:
+   ENVL_CUSTOM_PATH = "~/TMA/ENVlaunch"
 
 # The package search path. Rez uses this to find packages. A package with the
 # same name and version in an earlier path takes precedence.
 packages_path = [
-    ENVL_CUSTOM_PATH + "/packages",           # locally installed pkgs, not yet deployed
-    ENVL_CUSTOM_PATH + "/int_packages",  # internally developed pkgs, deployed
-    ENVL_CUSTOM_PATH + "/ext_packages",  # external (3rd party) pkgs, such as houdini, boost
+    ENVL_CUSTOM_PATH + "/test_packages",   # for staging packages downloaded from ENVlaunch
+    ENVL_CUSTOM_PATH + "/local_packages",  # locally installed pkgs, not yet deployed. Handled only by the user.
+    ENVL_CUSTOM_PATH + "/packages",        # internally developed pkgs, deployed
 ]
 
 # The path that Rez will locally install packages to when rez-build is used
-local_packages_path = "~/packages"
+local_packages_path = ENVL_CUSTOM_PATH + "/local_packages"
 
 # The path that Rez will deploy packages to when rez-release is used. For
 # production use, you will probably want to change this to a site-wide location.
-release_packages_path = "~/.rez/packages/int"
+release_packages_path = ENVL_CUSTOM_PATH + "/released_packages"
 
 # Where temporary files go. Defaults to appropriate path depending on your
 # system - for example, *nix distributions will probably set this to "/tmp". It
@@ -297,6 +302,7 @@ package_cache_log_days = 7
 # Packages that are implicitly added to all package resolves, unless the
 # --no-implicit flag is used.
 implicit_packages = [
+    "~tma_platform=={system.platform}",
     "~platform=={system.platform}",
     "~arch=={system.arch}",
     "~os=={system.os}",
