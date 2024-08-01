@@ -298,6 +298,7 @@ implicit_packages = [
     os.environ.get('MACHINE_PLATFORM'),
     os.environ.get('MACHINE_ARCH'),
     os.environ.get('MACHINE_OS'),
+    os.environ.get('MACHINE_TMA_PLATFORM'),
 ]
 
 # Override platform values from Platform.os and arch.
