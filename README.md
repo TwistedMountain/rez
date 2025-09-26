@@ -24,7 +24,32 @@
 - [Building Your First Package](#building-your-first-package)
 - [Features](#features)
 
+## TMA NOTES
 
+We have forked rez to include additional support to package variants.
+
+NOTE:
+BRANCH "master": Contains shared code for all of our rez installs
+BRANCH "pkg-releaser": Contains updated rez configs for the package releaser server (child of master)
+BRANCH "envl-lite-installer": Contains updated rez configs for ENVLaunch Lite installer (child of master)
+BRANCH "envl-dsktp-instlr": Legacy ENVlaunch (2.0) rez installer. Deprecated
+
+Always maintain this structure, where we add functionality in master, and update children branches.
+
+Added functionality: 
+
+    rez pkg-handler [PACKAGE-VERSION] --pkg-root C:\some\package\root  *****
+    * --add-variant tma_platform-linux/maya-2023
+    * --remove-variant tma_platform-linux/maya-2023
+    * --fetch-variants
+
+    # Note: version must be explicit, down to the hotfix version (if any)
+    # Note: multiple arguments can be provided at once in one pkg-handler cmd, as long as it updates the same package
+
+    If required, the package handler code can be used from python directly (without using the rez cmd)
+
+
+Can also use rez.package_handler.PackageHandler() directly without the rez interface
 ## What Is Rez?
 
 Rez is a cross-platform package manager with a difference. Using Rez you can create
