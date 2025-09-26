@@ -28,11 +28,12 @@
 
 We have forked rez to include additional support to package variants.
 
-NOTE:
-BRANCH "master": Contains shared code for all of our rez installs
-BRANCH "pkg-releaser": Contains updated rez configs for the package releaser server (child of master)
-BRANCH "envl-lite-installer": Contains updated rez configs for ENVLaunch Lite installer (child of master)
-BRANCH "envl-dsktp-instlr": Legacy ENVlaunch (2.0) rez installer. Deprecated
+BRANCH NOTES:
+
+* master: Contains shared code for all of our rez installs
+* pkg-releaser: Contains updated rez configs for the package releaser server (child of master)
+* envl-lite-installer: Contains updated rez configs for ENVLaunch Lite installer (child of master)
+* envl-dsktp-instlr: Legacy ENVlaunch (2.0) rez installer. Deprecated
 
 Always maintain this structure, where we add functionality in master, and update children branches.
 
