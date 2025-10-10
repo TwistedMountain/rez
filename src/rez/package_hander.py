@@ -8,6 +8,7 @@ import os
 import sys
 import shutil
 import re
+import builtins
 import importlib.util
 from importlib import reload
 from functools import wraps
@@ -22,6 +23,13 @@ def reload_package_py(func):
         obj = args[0]
         obj.package_mod = obj._read_package_module()
         return func(*args, **kwargs)
+    return _wrap
+
+def _no_op_decorator(*args, **kwargs):
+    if len(args) == 1 and callable(args[0]) and not kwargs:
+        return args[0]
+    def _wrap(obj):
+        return obj
     return _wrap
 
 
@@ -63,9 +71,17 @@ class PackageHandler():
     
     def _read_package_module(self):
         """Reads the package.py as a module, returns it"""
-        spec = importlib.util.spec_from_file_location('package_mod', self.package_py_path)
-        pkg_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(pkg_module)
+        # Install rez decorators to builtins as no-ops before import
+        builtins.early = _no_op_decorator
+        builtins.late = _no_op_decorator
+        try:
+            spec = importlib.util.spec_from_file_location('package_mod', self.package_py_path)
+            pkg_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(pkg_module)
+        finally:
+            # Cleanup no-op decorators
+            del builtins.early
+            del builtins.late
         return pkg_module
 
     @reload_package_py
