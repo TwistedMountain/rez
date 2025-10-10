@@ -4,17 +4,15 @@
 
 import os
 import re
-from subprocess import PIPE
 
 from rez.config import config
-from rez.vendor.six import six
 from rez.rex import RexExecutor, OutputStyle, EscapedString
 from rez.shells import Shell
 from rez.system import system
 from rez.utils.platform_ import platform_
 from rez.utils.execution import Popen
 from rez.util import shlex_join
-from .windows import to_windows_path
+from .windows import get_syspaths_from_registry, to_windows_path
 
 
 class PowerShellBase(Shell):
@@ -79,27 +77,7 @@ class PowerShellBase(Shell):
             cls.syspaths = config.standard_system_paths
             return cls.syspaths
 
-        # TODO: Research if there is an easier way to pull system PATH from
-        # registry in powershell
-        paths = []
-
-        cmds = [
-            [
-                "powershell",
-                '(Get-ItemProperty "HKLM:SYSTEM/CurrentControlSet/Control/Session Manager/Environment").Path',
-            ], [
-                "powershell", "(Get-ItemProperty -Path HKCU:Environment).Path"
-            ]
-        ]
-
-        for cmd in cmds:
-            p = Popen(cmd, stdout=PIPE, stderr=PIPE,
-                      text=True)
-            out_, _ = p.communicate()
-            out_ = out_.strip()
-
-            if p.returncode == 0:
-                paths.extend(out_.split(os.pathsep))
+        paths = get_syspaths_from_registry()
 
         cls.syspaths = [x for x in paths if x]
 
@@ -168,17 +146,25 @@ class PowerShellBase(Shell):
         if shell_command:
             executor.command(shell_command)
 
-        # Forward exit call to parent PowerShell process
+        # Translate the status of the most recent command into an exit code.
         #
-        # Note that in powershell, $LASTEXITCODE is only set after running an
-        # executable - in other cases (such as when a command is not found),
-        # only the bool $? var is set.
+        # Note that in PowerShell, `$LASTEXITCODE` is only set after calling a
+        # native command (i.e. an executable), or another script that uses the
+        # `exit` keyword. Otherwise, only the boolean `$?` variable is set (to
+        # True if the last command succeeded and False if it failed).
+        # See https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_automatic_variables  # noqa
+        #
+        # Additionally, if PowerShell is running in strict mode, references to
+        # uninitialized variables will error instead of simply returning 0 or
+        # `$null`, so we use `Test-Path` here to verify that `$LASTEXITCODE` has
+        # been set before using it.
+        # See https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/set-strictmode?view=powershell-7.5#description  # noqa
         #
         executor.command(
-            "if(! $?) {\n"
-            "  if ($LASTEXITCODE) {\n"
-            "    exit $LASTEXITCODE\n"
-            "  }\n"
+            "if ((Test-Path variable:LASTEXITCODE) -and $LASTEXITCODE) {\n"
+            "  exit $LASTEXITCODE\n"
+            "}\n"
+            "if (! $?) {\n"
             "  exit 1\n"
             "}"
         )
@@ -201,6 +187,12 @@ class PowerShellBase(Shell):
 
         # Suppresses copyright message of PowerShell and pwsh
         cmd += ["-NoLogo"]
+
+        # Powershell execution policy overrides
+        # Prevent injections/mistakes by ensuring policy value only contains letters.
+        execution_policy = self.settings.execution_policy
+        if execution_policy and execution_policy.isalpha():
+            cmd += ["-ExecutionPolicy", execution_policy]
 
         # Generic form of sourcing that works in powershell and pwsh
         cmd += ["-File", target_file]
@@ -264,8 +256,8 @@ class PowerShellBase(Shell):
         # Be careful about ambiguous case in pwsh on Linux where pathsep is :
         # so that the ${ENV:VAR} form has to be used to not collide.
         self._addline(
-            'Set-Item -Path "Env:{0}" -Value ("{1}{2}" + (Get-ChildItem "Env:{0}").Value)'.format(
-                key, value, self.pathsep)
+            'Set-Item -Path "Env:{0}" -Value ("{1}{2}" + (Get-ChildItem -ErrorAction SilentlyContinue "Env:{0}").Value)'
+            .format(key, value, self.pathsep)
         )
 
     def appendenv(self, key, value):
@@ -280,7 +272,9 @@ class PowerShellBase(Shell):
             .format(key, os.path.pathsep, value))
 
     def unsetenv(self, key):
-        self._addline(r"Remove-Item Env:\%s" % key)
+        self._addline(
+            'Remove-Item -ErrorAction SilentlyContinue "Env:{0}"'.format(key)
+        )
 
     def resetenv(self, key, value, friends=None):
         self._addline(self.setenv(key, value))
@@ -325,7 +319,7 @@ class PowerShellBase(Shell):
 
     @classmethod
     def join(cls, command):
-        if isinstance(command, six.string_types):
+        if isinstance(command, str):
             return command
 
         replacements = [

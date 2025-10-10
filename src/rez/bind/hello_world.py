@@ -9,14 +9,14 @@ Note: Even though this is a python-based package, it does not list python as a
 requirement. This is not typical! This package is intended as a very simple test
 case, and for that reason we do not want any dependencies.
 """
-from __future__ import absolute_import, print_function
-
 from rez.package_maker import make_package
-from rez.vendor.version.version import Version
+from rez.version import Version
 from rez.utils.lint_helper import env
 from rez.utils.execution import create_executable_script, ExecutableScriptMode
+from rez.vendor.distlib.scripts import ScriptMaker
 from rez.bind._utils import make_dirs, check_version
 import os.path
+import shutil
 
 
 def commands():
@@ -46,17 +46,32 @@ def bind(path, version_range=None, opts=None, parser=None):
 
     def make_root(variant, root):
         binpath = make_dirs(root, "bin")
-        filepath = os.path.join(binpath, "hello_world")
+        binpathtmp = make_dirs(root, "bintmp")
 
         create_executable_script(
-            filepath,
+            os.path.join(binpathtmp, "hello_world"),
             hello_world_source,
-            py_script_mode=ExecutableScriptMode.platform_specific
+            py_script_mode=ExecutableScriptMode.single,
         )
+        create_executable_script(
+            os.path.join(binpathtmp, "hello_world_gui"),
+            hello_world_source,
+            program="pythonw",
+            py_script_mode=ExecutableScriptMode.single,
+        )
+
+        # We want to use ScriptMaker on all platofrms. This allows us to
+        # correctly setup the script to work everywhere, even on Windows.
+        # create_executable_script should be fixed to use ScriptMaker
+        # instead.
+        maker = ScriptMaker(binpathtmp, make_dirs(binpath))
+        maker.make("hello_world")
+        maker.make("hello_world_gui")
+        shutil.rmtree(binpathtmp)
 
     with make_package("hello_world", path, make_root=make_root) as pkg:
         pkg.version = version
-        pkg.tools = ["hello_world"]
+        pkg.tools = ["hello_world", "hello_world_gui"]
         pkg.commands = commands
 
     return pkg.installed_variants

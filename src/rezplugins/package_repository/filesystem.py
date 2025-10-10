@@ -6,10 +6,10 @@
 Filesystem-based package repository
 """
 from contextlib import contextmanager
+from functools import lru_cache
 import os.path
 import os
 import stat
-import errno
 import time
 import shutil
 
@@ -32,13 +32,8 @@ from rez.utils.filesystem import make_path_writable, \
 from rez.utils.platform_ import platform_
 from rez.utils.yaml import load_yaml
 from rez.config import config
-from rez.backport.lru_cache import lru_cache
 from rez.vendor.schema.schema import Schema, Optional, And, Use, Or
-from rez.vendor.six import six
-from rez.vendor.version.version import Version, VersionRange
-
-
-basestring = six.string_types[0]
+from rez.version import Version, VersionRange
 
 
 debug_print = config.debug_printer("resources")
@@ -208,6 +203,7 @@ class FileSystemPackageResource(PackageResourceHelper):
 
         return data
 
+    # TODO: Deprecate? How could we add deprecation warnings without flooding the user?
     def _load_old_formats(self):
         data = None
 
@@ -245,6 +241,7 @@ class FileSystemPackageResource(PackageResourceHelper):
         if not maxlen:
             return data
 
+        # TODO: Deprecate
         if file_format == FileFormat.yaml:
             changelog = data.get("changelog")
             if changelog:
@@ -258,7 +255,7 @@ class FileSystemPackageResource(PackageResourceHelper):
                 if changed:
                     data["changelog"] = changelog
         else:
-            assert isinstance(data, basestring)
+            assert isinstance(data, str)
             if len(data) > (maxlen + 3):
                 data = data[:maxlen] + "..."
 
@@ -287,10 +284,10 @@ class FileSystemCombinedPackageFamilyResource(PackageFamilyResource):
 
     schema = Schema({
         Optional("versions"): [
-            And(basestring, Use(Version))
+            And(str, Use(Version))
         ],
         Optional("version_overrides"): {
-            And(basestring, Use(VersionRange)): dict
+            And(str, Use(VersionRange)): dict
         }
     })
 
@@ -334,6 +331,7 @@ class FileSystemCombinedPackageFamilyResource(PackageFamilyResource):
             yield package
 
     def _load(self):
+        # TODO: Deprecate: What is self.ext?
         format_ = FileFormat[self.ext]
         data = load_from_file(
             self.filepath,
@@ -433,6 +431,7 @@ class FileSystemCombinedVariantResource(VariantResourceHelper):
 class FileSystemPackageRepository(PackageRepository):
     """A filesystem-based package repository.
 
+    TODO: Deprecate YAML
     Packages are stored on disk, in either 'package.yaml' or 'package.py' files.
     These files are stored into an organised directory structure like so:
 
@@ -467,8 +466,8 @@ class FileSystemPackageRepository(PackageRepository):
     """
     schema_dict = {"file_lock_timeout": int,
                    "file_lock_dir": Or(None, str),
-                   "file_lock_type": Or("default", "link", "mkdir"),
-                   "package_filenames": [basestring]}
+                   "file_lock_type": Or("default", "link", "mkdir", "symlink"),
+                   "package_filenames": [str]}
 
     building_prefix = ".building"
     ignore_prefix = ".ignore"
@@ -677,10 +676,7 @@ class FileSystemPackageRepository(PackageRepository):
             return 0
 
         # create .ignore{ver} file
-        try:
-            os.makedirs(fam_path)
-        except OSError:  # already exists
-            pass
+        os.makedirs(fam_path, exist_ok=True)
 
         with open(filepath, 'w'):
             pass
@@ -861,8 +857,7 @@ class FileSystemPackageRepository(PackageRepository):
         path = self.location
 
         family_path = os.path.join(path, variant_resource.name)
-        if not os.path.isdir(family_path):
-            os.makedirs(family_path)
+        os.makedirs(family_path, exist_ok=True)
 
         filename = self.building_prefix + str(variant_resource.version)
         filepath = os.path.join(family_path, filename)
@@ -914,7 +909,7 @@ class FileSystemPackageRepository(PackageRepository):
                 raise PackageRepositoryError(
                     "Cannot remove package attribute 'version'")
 
-            if isinstance(ver, basestring):
+            if isinstance(ver, str):
                 ver = Version(ver)
                 overrides = overrides.copy()
                 overrides["version"] = ver
@@ -931,13 +926,12 @@ class FileSystemPackageRepository(PackageRepository):
         path = self.location
 
         try:
-            os.makedirs(path)
+            os.makedirs(path, exist_ok=True)
         except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise PackageRepositoryError(
-                    "Package repository path %r could not be created: %s: %s"
-                    % (path, e.__class__.__name__, e)
-                )
+            raise PackageRepositoryError(
+                "Package repository path %r could not be created: %s: %s"
+                % (path, e.__class__.__name__, e)
+            )
 
         # install the variant
         def _create_variant():
@@ -973,6 +967,8 @@ class FileSystemPackageRepository(PackageRepository):
             from rez.vendor.lockfile.mkdirlockfile import MkdirLockFile as LockFile
         elif _settings.file_lock_type == 'link':
             from rez.vendor.lockfile.linklockfile import LinkLockFile as LockFile
+        elif _settings.file_lock_type == 'symlink':
+            from rez.vendor.lockfile.symlinklockfile import SymlinkLockFile as LockFile
 
         path = self.location
 
@@ -1182,6 +1178,7 @@ class FileSystemPackageRepository(PackageRepository):
             package_filenames = _settings.package_filenames
 
         for name in package_filenames:
+            # TODO: Deprecate YAML
             for format_ in (FileFormat.py, FileFormat.yaml):
                 filename = "%s.%s" % (name, format_.extension)
                 filepath = os.path.join(path, filename)
@@ -1191,8 +1188,7 @@ class FileSystemPackageRepository(PackageRepository):
 
     def _create_family(self, name):
         path = os.path.join(self.location, name)
-        if not os.path.exists(path):
-            os.makedirs(path)
+        os.makedirs(path, exist_ok=True)
 
         self._on_changed(name)
         return self.get_package_family(name)
@@ -1210,6 +1206,11 @@ class FileSystemPackageRepository(PackageRepository):
         family = self.get_package_family(variant_name)
         if not family:
             family = self._create_family(variant_name)
+            if not family:
+                raise PackageRepositoryError(
+                    f'Package family: {variant_name} does not exist and could not be created '
+                    f'in repository: {self.location}. Perhaps family already exists with different character case?'
+                )
 
         if isinstance(family, FileSystemCombinedPackageFamilyResource):
             raise NotImplementedError(
@@ -1394,8 +1395,7 @@ class FileSystemPackageRepository(PackageRepository):
             pkg_base_path = os.path.join(family_path, str(variant_version))
         else:
             pkg_base_path = family_path
-        if not os.path.exists(pkg_base_path):
-            os.makedirs(pkg_base_path)
+        os.makedirs(pkg_base_path, exist_ok=True)
 
         # Apply overrides.
         #

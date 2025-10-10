@@ -9,7 +9,7 @@ from rez.config import config
 from rez.build_process import create_build_process
 from rez.build_system import create_build_system
 from rez.resolved_context import ResolvedContext
-from rez.exceptions import BuildError, BuildContextResolveError,\
+from rez.exceptions import BuildError, BuildContextResolveError, \
     PackageFamilyNotFoundError
 import unittest
 from rez.tests.util import TestBase, TempdirMixin, find_file_in_path, \
@@ -141,6 +141,7 @@ class TestBuild(TestBase, TempdirMixin):
         """Test that a broken build fails correctly.
         """
         config.override("default_shell", shell)
+        self.inject_python_repo()
 
         working_dir = os.path.join(self.src_root, "whack")
         builder = self._create_builder(working_dir)
@@ -152,6 +153,7 @@ class TestBuild(TestBase, TempdirMixin):
         """Test an interdependent set of builds.
         """
         config.override("default_shell", shell)
+        self.inject_python_repo()
 
         self._test_build_build_util()
         self._test_build_floob()
@@ -165,6 +167,7 @@ class TestBuild(TestBase, TempdirMixin):
         """Test we can build packages that contain anti packages
         """
         config.override("default_shell", shell)
+        self.inject_python_repo()
 
         self._test_build_build_util()
         self._test_build_floob()
@@ -184,6 +187,7 @@ class TestBuild(TestBase, TempdirMixin):
         self._test_build_translate_lib()
         self._test_build_sup_world()
 
+    @unittest.skipIf(platform_.name == "windows", "Skipping because make and GCC are not common on Windows")
     @program_dependent("make", "g++")
     def test_build_custom(self):
         """Test a make-based package that uses the custom_build attribute."""

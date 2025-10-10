@@ -5,7 +5,6 @@
 """
 Binds rez itself as a rez package.
 """
-from __future__ import absolute_import
 import rez
 from rez.package_maker import make_package
 from rez.bind._utils import check_version
@@ -35,7 +34,7 @@ def bind(path, version_range=None, opts=None, parser=None):
     with make_package("rez", path, make_root=make_root) as pkg:
         pkg.version = version
         pkg.commands = commands
-        pkg.requires = ["python-2.7+<4"]
+        pkg.requires = ["python-3.7+<3.12"]
         pkg.variants = [system.variant]
 
     return pkg.installed_variants

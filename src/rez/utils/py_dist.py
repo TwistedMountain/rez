@@ -5,8 +5,6 @@
 """
 Functions for converting python distributions to rez packages.
 """
-from __future__ import print_function
-
 from rez.exceptions import RezSystemError
 import pkg_resources
 import shutil
@@ -18,8 +16,7 @@ import textwrap
 
 def _mkdirs(*dirs):
     path = os.path.join(*dirs)
-    if not os.path.exists(path):
-        os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
     return path
 
 
@@ -134,6 +131,7 @@ def convert_dist(name, dest_path, make_variant=True, ignore_dirs=None,
         ignore_dirs (bool): List of directory names to not copy from the dist.
         python_requirement (str): How the package should depend on python.
             One of:
+
             - "major": depend on python-X
             - "major_minor": depend on python-X.X
             - any other value: this string is used as the literal version
