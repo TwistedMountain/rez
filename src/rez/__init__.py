@@ -2,30 +2,30 @@
 # Copyright Contributors to the Rez Project
 
 
-from __future__ import print_function
-
 from rez.utils._version import _rez_version
+import rez.deprecations
 import sys
 import os
+import warnings
 
 
 __version__ = _rez_version
 __author__ = "Allan Johns"
-__license__ = "LGPL"
+__license__ = "Apache-2.0"
 
 
 module_root_path = __path__[0]  # noqa
 
 
 # TODO: Revamp logging. For now, this is here for backwards compatibility
-def _init_logging():
+def _init_logging() -> None:
+    import logging
     logging_conf = os.getenv("REZ_LOGGING_CONF")
     if logging_conf:
         import logging.config
         logging.config.fileConfig(logging_conf, disable_existing_loggers=False)
         return
 
-    import logging
     from rez.utils.colorize import ColorizedStreamHandler
 
     formatter = logging.Formatter(
@@ -39,6 +39,10 @@ def _init_logging():
     logger.setLevel(logging.DEBUG)
     logger.addHandler(handler)
 
+    # Suppress pika vendor library logs unless context_tracking debug is on.
+    # set_pika_log_level() in amqp.py will override this to DEBUG if needed.
+    logging.getLogger("rez.vendor.pika").setLevel(logging.CRITICAL)
+
 
 _init_logging()
 
@@ -50,7 +54,7 @@ if action:
     import traceback
 
     if action == "print_stack":
-        def callback(sig, frame):
+        def callback(sig, frame) -> None:
             txt = ''.join(traceback.format_stack(frame))
             print()
             print(txt)
@@ -59,3 +63,12 @@ if action:
 
     if callback:
         signal.signal(signal.SIGUSR1, callback)  # Register handler
+
+
+# Log all rez warnings, ignoring possible user defined warning filters.
+# We can't tell users to use something like PYTHONWARNINGS=default::rez.deprecations.RezDeprecationWarning
+# because python reads PYTHONWARNINGS before it actually can import modules. So it
+# basically can't import rez when PYTHONWARNINGS is read.
+# This means we have to rely on a custom environment variable.
+if os.getenv("REZ_LOG_DEPRECATION_WARNINGS"):
+    warnings.filterwarnings("default", category=rez.deprecations.RezDeprecationWarning)

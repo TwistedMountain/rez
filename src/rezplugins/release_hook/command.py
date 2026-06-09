@@ -5,8 +5,6 @@
 """
 Executes pre- and post-release shell commands
 """
-from __future__ import print_function
-
 import getpass
 import sys
 import os
@@ -20,26 +18,22 @@ from rez.utils.logging_ import print_debug
 from rez.utils.scope import scoped_formatter
 from rez.utils.formatting import expandvars
 from rez.vendor.schema.schema import Schema, Or, Optional, Use, And
-from rez.vendor.six import six
 from rez.util import which
-
-
-basestring = six.string_types[0]
 
 
 class CommandReleaseHook(ReleaseHook):
 
     commands_schema = Schema({
-        "command": basestring,
+        "command": str,
         Optional("args"): Or(
             And(
-                basestring,
+                str,
                 Use(lambda x: x.strip().split())
             ),
-            [basestring]
+            [str]
         ),
         Optional("pretty_args"): bool,
-        Optional("user"): basestring,
+        Optional("user"): str,
         Optional("env"): dict
     })
 
@@ -55,14 +49,14 @@ class CommandReleaseHook(ReleaseHook):
     }
 
     @classmethod
-    def name(cls):
+    def name(cls) -> str:
         return "command"
 
-    def __init__(self, source_path):
+    def __init__(self, source_path) -> None:
         super(CommandReleaseHook, self).__init__(source_path)
 
     def execute_command(self, cmd_name, cmd_arguments, user, errors, env=None):
-        def _err(msg):
+        def _err(msg) -> None:
             errors.append(msg)
             if self.settings.print_error:
                 print(msg, file=sys.stderr)
@@ -71,7 +65,7 @@ class CommandReleaseHook(ReleaseHook):
         if env:
             kwargs["env"] = env
 
-        def _execute(commands):
+        def _execute(commands) -> bool:
             process = Popen(commands, stdout=PIPE, stderr=STDOUT, **kwargs)
             stdout, _ = process.communicate()
 
@@ -127,7 +121,7 @@ class CommandReleaseHook(ReleaseHook):
                 "The following pre-release commands failed:\n%s"
                 % '\n\n'.join(errors))
 
-    def post_release(self, user, install_path, variants, **kwargs):
+    def post_release(self, user, install_path, variants, **kwargs) -> None:
         # note that the package we use here is the *installed* package, not the
         # developer package (self.package). Otherwise, attributes such as 'root'
         # will be None
@@ -149,12 +143,12 @@ class CommandReleaseHook(ReleaseHook):
             )
 
     def _execute_commands(self, commands, install_path, package, errors=None,
-                          variants=None):
+                          variants=None) -> None:
         release_dict = dict(path=install_path)
         variant_infos = []
         if variants:
             for variant in variants:
-                if isinstance(variant, six.integer_types):
+                if isinstance(variant, int):
                     variant_infos.append(variant)
                 else:
                     package = variant.parent

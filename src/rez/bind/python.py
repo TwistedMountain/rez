@@ -5,7 +5,6 @@
 """
 Binds a python executable as a rez package.
 """
-from __future__ import absolute_import
 from rez.bind._utils import check_version, find_exe, extract_version, \
     make_dirs, log, run_python_command
 from rez.package_maker import make_package
@@ -16,17 +15,17 @@ import shutil
 import os.path
 
 
-def setup_parser(parser):
+def setup_parser(parser) -> None:
     parser.add_argument("--exe", type=str, metavar="PATH",
                         help="bind an interpreter other than the current "
                         "python interpreter")
 
 
-def commands():
+def commands() -> None:
     env.PATH.append('{this.root}/bin')
 
 
-def post_commands():
+def post_commands() -> None:
     # these are the builtin modules for this python executable. If we don't
     # include these, some python behavior can be incorrect.
     import os
@@ -68,7 +67,7 @@ def bind(path, version_range=None, opts=None, parser=None):
     # make the package
     #
 
-    def make_root(variant, root):
+    def make_root(variant, root) -> None:
         binpath = make_dirs(root, "bin")
         link = os.path.join(binpath, "python")
         platform_.symlink(exepath, link)

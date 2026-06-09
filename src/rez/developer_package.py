@@ -2,6 +2,8 @@
 # Copyright Contributors to the Rez Project
 
 
+from __future__ import annotations
+
 from rez.config import config
 from rez.packages import Package, create_package
 from rez.serialise import load_from_file, FileFormat, set_objects
@@ -9,14 +11,10 @@ from rez.exceptions import PackageMetadataError, InvalidPackageError
 from rez.utils.execution import add_sys_paths
 from rez.utils.sourcecode import SourceCode
 from rez.utils.logging_ import print_info, print_error
-from rez.vendor.enum import Enum
-from rez.vendor.six import six
 from inspect import isfunction
+from enum import Enum
 import os.path
 import stat
-
-
-basestring = six.string_types[0]
 
 
 class PreprocessMode(Enum):
@@ -33,22 +31,22 @@ class DeveloperPackage(Package):
     This is a package in a source directory that is subsequently built or
     released.
     """
-    def __init__(self, resource):
+    def __init__(self, resource) -> None:
         super(DeveloperPackage, self).__init__(resource)
-        self.filepath = None
+        self.filepath: str | None = None
 
         # include modules, derived from any present @include decorators
-        self.includes = None
+        self.includes: set[str] | None = None
 
     @property
-    def root(self):
+    def root(self) -> str | None:
         if self.filepath:
             return os.path.dirname(self.filepath)
         else:
             return None
 
     @classmethod
-    def from_path(cls, path, format=None):
+    def from_path(cls, path: str, format: FileFormat | None = None) -> DeveloperPackage:
         """Load a developer package.
 
         A developer package may for example be a package.yaml or package.py in a
@@ -66,9 +64,9 @@ class DeveloperPackage(Package):
         data = None
 
         if format is None:
-            formats = (FileFormat.py, FileFormat.yaml)
+            formats = [FileFormat.py, FileFormat.yaml]
         else:
-            formats = (format,)
+            formats = [format]
 
         try:
             mode = os.stat(path).st_mode
@@ -97,13 +95,13 @@ class DeveloperPackage(Package):
                     break
             if data:
                 name = data.get("name")
-                if name is not None or isinstance(name, basestring):
+                if name is not None or isinstance(name, str):
                     break
 
         if data is None:
             raise PackageMetadataError("No package definition file found at %s" % path)
 
-        if name is None or not isinstance(name, basestring):
+        if name is None or not isinstance(name, str):
             raise PackageMetadataError(
                 "Error in %r - missing or non-string field 'name'" % filepath)
 
@@ -139,7 +137,7 @@ class DeveloperPackage(Package):
 
         return package
 
-    def get_reevaluated(self, objects):
+    def get_reevaluated(self, objects) -> DeveloperPackage:
         """Get a newly loaded and re-evaluated package.
 
         Values in `objects` are made available to early-bound package
@@ -156,7 +154,7 @@ class DeveloperPackage(Package):
         with set_objects(objects):
             return self.from_path(self.root)
 
-    def _validate_includes(self):
+    def _validate_includes(self) -> None:
         if not self.includes:
             return
 
@@ -177,7 +175,7 @@ class DeveloperPackage(Package):
                     "@include decorator requests module '%s', but the file "
                     "%s does not exist." % (name, filepath))
 
-    def _get_preprocessed(self, data):
+    def _get_preprocessed(self, data: dict) -> tuple[DeveloperPackage, dict] | None:
         """
         Returns:
             (DeveloperPackage, new_data) 2-tuple IF the preprocess function
@@ -208,7 +206,7 @@ class DeveloperPackage(Package):
                         "preprocessing has not been applied.")
                     return None
 
-                elif isinstance(package_preprocess_function, basestring):
+                elif isinstance(package_preprocess_function, str):
                     if '.' not in package_preprocess_function:
                         print_error(
                             "Setting 'package_preprocess_function' must be of "

@@ -2,8 +2,6 @@
 # Copyright Contributors to the Rez Project
 
 
-from __future__ import print_function, with_statement
-
 import fnmatch
 import os
 import os.path
@@ -15,12 +13,6 @@ try:
 except ImportError:
     print("install failed - requires setuptools", file=sys.stderr)
     sys.exit(1)
-
-
-if sys.version_info < (2, 7):
-    print("install failed - requires python v2.7 or greater", file=sys.stderr)
-    sys.exit(1)
-
 
 # carefully import some sourcefiles that are standalone
 source_path = os.path.dirname(os.path.realpath(__file__))
@@ -62,26 +54,31 @@ setup(
     long_description_content_type='text/markdown',
     url="https://github.com/AcademySoftwareFoundation/rez",
     author="Allan Johns",
-    author_email="rez-discussion@lists.aswf.io",
-    license="Apache License 2.0",
+    author_email="nerdvegas@gmail.com",
+    maintainer="Contributors to the rez project",
+    maintainer_email="rez-discussion@lists.aswf.io",
+    license="Apache-2.0",
+    license_files=["LICENSE"],
     entry_points={
         "console_scripts": get_specifications().values()
     },
-    include_package_data=True,
+    include_package_data=False,
     zip_safe=False,
     package_dir={'': 'src'},
     packages=find_packages('src', exclude=["build_utils",
                                            "build_utils.*",
                                            "tests"]),
+    install_requires=[],
     package_data={
         'rez':
             ['utils/logging.conf'] +
             ['README*'] +
+            ["py.typed"] +
             find_files('*', 'completion') +
             find_files('*', 'data') +
             find_files('*.exe', 'vendor/distlib'),
         'rezplugins':
-            find_files('rezconfig', root='rezplugins') +
+            ["py.typed"] +
             find_files('*.cmake', 'build_system', root='rezplugins') +
             find_files('*', 'build_system/template_files', root='rezplugins'),
         'rezgui':
@@ -94,9 +91,14 @@ setup(
         "Intended Audience :: Developers",
         "Operating System :: OS Independent",
         "Programming Language :: Python",
-        "Programming Language :: Python :: 2",
-        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Topic :: Software Development",
         "Topic :: System :: Software Distribution"
-    ]
+    ],
+    python_requires=">=3.8",
 )

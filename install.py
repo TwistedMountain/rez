@@ -6,14 +6,19 @@
 This script uses venv/virtualenv to create a standalone, production-ready Rez
 installation in the specified directory.
 """
-from __future__ import print_function
-
 import argparse
 import os
+import platform
 import sys
 import shutil
-import os.path
 import subprocess
+
+USE_VIRTUALENV = False
+try:
+    import venv
+except ImportError:
+    USE_VIRTUALENV = True
+    import virtualenv
 
 
 source_path = os.path.dirname(os.path.realpath(__file__))
@@ -24,40 +29,42 @@ sys.path.insert(0, src_path)
 # though rez is not yet built.
 #
 from rez.utils._version import _rez_version  # noqa: E402
+from rez.utils.filesystem import safe_rmtree
 from rez.utils.which import which  # noqa: E402
 from rez.cli._entry_points import get_specifications  # noqa: E402
 from rez.vendor.distlib.scripts import ScriptMaker  # noqa: E402
 
-# switch to builtin venv in python 3.7+
-#
-# Note: There are issues using venv with 3.6. Installed pip version is 18.2
-# (which isn't high enough for rez-pip to behave correctly). 3.7 installs pip
-# version 20.1.
-#
-use_venv = (sys.version_info[:2] >= (3, 7))
 
-if use_venv:
-    import venv
-else:
-    from build_utils.virtualenv.virtualenv import create_environment, path_locations
+def create_virtual_environment(dest_dir: str) -> None:
+    """Create a virtual environment in the given directory.
 
+    Args:
+        dest_dir (str): Full path to the virtual environment directory.
 
-def create_virtual_environment(dest_dir):
-    if use_venv:
+    """
+    if USE_VIRTUALENV:
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "virtualenv", dest_dir],
+                check=True
+            )
+        except subprocess.CalledProcessError as err:
+            print(f"Failed to create virtual environment: {err}")
+            sys.exit(1)
+    else:
         builder = venv.EnvBuilder(with_pip=True)
         builder.create(dest_dir)
-    else:
-        create_environment(dest_dir)
 
 
-def get_virtualenv_bin_dir(dest_dir):
-    if use_venv:
-        builder = venv.EnvBuilder()
-        context = builder.ensure_directories(dest_dir)
-        return context.bin_path
-    else:
-        _, _, _, bin_dir = path_locations(dest_dir)
-        return bin_dir
+def get_virtualenv_bin_dir(dest_dir: str) -> str:
+    """Get the bin directory of the virtual environment.
+
+    Args:
+        dest_dir (str): The directory of the virtual environment.
+
+    """
+    bin_dir = "Scripts" if platform.system() == "Windows" else "bin"
+    return os.path.join(dest_dir, bin_dir)
 
 
 def get_virtualenv_py_executable(dest_dir):
@@ -100,7 +107,7 @@ def patch_rez_binaries(dest_dir):
     # we don't want resolved envs accidentally getting the virtualenv's 'python'.
     dest_bin_path = os.path.join(virtualenv_bin_path, "rez")
     if os.path.exists(dest_bin_path):
-        shutil.rmtree(dest_bin_path)
+        safe_rmtree(dest_bin_path)
     os.makedirs(dest_bin_path)
 
     maker = ScriptMaker(
@@ -134,26 +141,26 @@ def copy_completion_scripts(dest_dir):
     if completion_path:
         dest_path = os.path.join(dest_dir, "completion")
         if os.path.exists(dest_path):
-            shutil.rmtree(dest_path)
+            safe_rmtree(dest_path)
         shutil.copytree(completion_path, dest_path)
         return dest_path
 
     return None
 
 
-def install(dest_dir, print_welcome=False):
+def install(dest_dir, print_welcome=False, editable=False):
     """Install rez into the given directory.
 
     Args:
         dest_dir (str): Full path to the install directory.
     """
-    print("installing rez to %s..." % dest_dir)
+    print("installing rez%s to %s..." % (" (editable mode)" if editable else "", dest_dir))
 
     # create the virtualenv
     create_virtual_environment(dest_dir)
 
     # install rez from source
-    install_rez_from_source(dest_dir)
+    install_rez_from_source(dest_dir, editable=editable)
 
     # patch the rez binaries
     patch_rez_binaries(dest_dir)
@@ -216,11 +223,15 @@ def install(dest_dir, print_welcome=False):
         print('')
 
 
-def install_rez_from_source(dest_dir):
+def install_rez_from_source(dest_dir, editable):
     _, py_executable = get_virtualenv_py_executable(dest_dir)
 
     # install via pip
-    run_command([py_executable, "-m", "pip", "install", "."])
+    args = [py_executable, "-m", "pip", "install"]
+    if editable:
+        args.append("-e")
+    args.append(".")
+    run_command(args)
 
 
 def install_as_rez_package(repo_path):
@@ -253,7 +264,7 @@ def install_as_rez_package(repo_path):
     finally:
         # cleanup temp install
         try:
-            shutil.rmtree(tmpdir)
+            safe_rmtree(tmpdir)
         except:
             pass
 
@@ -274,6 +285,11 @@ if __name__ == "__main__":
         help="Install rez as a rez package. Note that this installs the API "
         "only (no cli tools), and DIR is expected to be the path to a rez "
         "package repository (and will default to ~/packages instead).")
+    parser.add_argument(
+        "-e", "--editable", action="store_true",
+        help="Make the install an editable install (pip install -e). This should "
+        "only be used for development purposes"
+    )
     parser.add_argument(
         "DIR", nargs='?',
         help="Destination directory. If '{version}' is present, it will be "
@@ -308,4 +324,4 @@ if __name__ == "__main__":
     if opts.as_rez_package:
         install_as_rez_package(dest_dir)
     else:
-        install(dest_dir, print_welcome=True)
+        install(dest_dir, print_welcome=True, editable=opts.editable)

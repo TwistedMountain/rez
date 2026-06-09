@@ -6,10 +6,10 @@ description = "foo thing"
 
 build_requires = ["floob"]
 
-private_build_requires = ["build_util"]
+private_build_requires = ["build_util", "python"]
 
 @include("late_utils")
-def commands():
+def commands() -> None:
     env.PYTHONPATH.append('{root}/python')
     env.FOO_IN_DA_HOUSE = "1"
 

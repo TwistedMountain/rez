@@ -8,13 +8,9 @@ from rezgui.mixins.ContextViewMixin import ContextViewMixin
 from rezgui.models.ContextModel import ContextModel
 from rez.config import config
 from rez.vendor import yaml
-from rez.vendor.six import six
 from rez.vendor.yaml.error import YAMLError
 from rez.vendor.schema.schema import Schema, SchemaError, Or, And, Use
 from functools import partial
-
-
-basestring = six.string_types[0]
 
 
 class ContextSettingsWidget(QtWidgets.QWidget, ContextViewMixin):
@@ -27,15 +23,15 @@ class ContextSettingsWidget(QtWidgets.QWidget, ContextViewMixin):
     }
 
     schema_dict = {
-        "packages_path":        [basestring],
-        "implicit_packages":    [basestring],
+        "packages_path":        [str],
+        "implicit_packages":    [str],
         "package_filter":       Or(And(None, Use(lambda x: [])),
                                    And(dict, Use(lambda x: [x])),
                                    [dict]),
         "caching":              bool
     }
 
-    def __init__(self, context_model=None, attributes=None, parent=None):
+    def __init__(self, context_model=None, attributes=None, parent=None) -> None:
         """
         Args:
             attributes (list of str): Select only certain settings to expose. If
@@ -75,13 +71,13 @@ class ContextSettingsWidget(QtWidgets.QWidget, ContextViewMixin):
 
         self._update_text()
 
-    def _contextChanged(self, flags=0):
+    def _contextChanged(self, flags: int=0) -> None:
         if not (flags & ContextModel.CONTEXT_CHANGED):
             return
         self._update_text()
 
-    def apply_changes(self):
-        def _content_error(title, text):
+    def apply_changes(self) -> None:
+        def _content_error(title, text) -> None:
             ret = QtWidgets.QMessageBox.warning(self, title, text,
                                             QtWidgets.QMessageBox.Discard,
                                             QtWidgets.QMessageBox.Cancel)
@@ -110,7 +106,7 @@ class ContextSettingsWidget(QtWidgets.QWidget, ContextViewMixin):
         self.context_model.set_caching(data["caching"])
         self._update_text()
 
-    def discard_changes(self, prompt=False):
+    def discard_changes(self, prompt: bool = False) -> None:
         if prompt:
             ret = QtWidgets.QMessageBox.warning(
                 self,
@@ -123,7 +119,7 @@ class ContextSettingsWidget(QtWidgets.QWidget, ContextViewMixin):
 
         self._update_text()
 
-    def set_defaults(self):
+    def set_defaults(self) -> None:
         packages_path = config.packages_path
         caching = config.caching
         implicits = [str(x) for x in config.implicit_packages]
@@ -140,7 +136,7 @@ class ContextSettingsWidget(QtWidgets.QWidget, ContextViewMixin):
         self.discard_btn.setEnabled(True)
         self.apply_btn.setEnabled(True)
 
-    def _update_text(self):
+    def _update_text(self) -> None:
         model = self.context_model
         implicits = [str(x) for x in model.implicit_packages]
         data = {"packages_path": model.packages_path,
@@ -154,7 +150,7 @@ class ContextSettingsWidget(QtWidgets.QWidget, ContextViewMixin):
         self.discard_btn.setEnabled(False)
         self.apply_btn.setEnabled(False)
 
-    def _set_text(self, data):
+    def _set_text(self, data) -> None:
         lines = []
         for key, value in data.items():
             lines.append('')
@@ -168,6 +164,6 @@ class ContextSettingsWidget(QtWidgets.QWidget, ContextViewMixin):
         txt = txt.lstrip()
         self.edit.setPlainText(txt)
 
-    def _settingsChanged(self):
+    def _settingsChanged(self) -> None:
         self.discard_btn.setEnabled(True)
         self.apply_btn.setEnabled(True)

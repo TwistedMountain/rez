@@ -5,20 +5,17 @@
 """
 Utilities related to managing data types.
 """
+from __future__ import annotations
+
 import os.path
 import json
+import functools
 
 from rez.vendor.schema.schema import Schema, Optional
 from threading import Lock
-from rez.vendor.six import six
+from typing import Any, Callable, Generic, MutableMapping, TypeVar, TYPE_CHECKING
 
-if six.PY2:
-    from collections import MutableMapping
-else:
-    from collections.abc import MutableMapping
-
-
-basestring = six.string_types[0]
+T = TypeVar("T")
 
 
 class ModifyList(object):
@@ -27,7 +24,7 @@ class ModifyList(object):
     This can be used in configs to add to list-based settings, rather than
     overwriting them.
     """
-    def __init__(self, append=None, prepend=None):
+    def __init__(self, append=None, prepend=None) -> None:
         for v in (prepend, append):
             if v is not None and not isinstance(v, list):
                 raise ValueError("Expected list in ModifyList, not %r" % v)
@@ -49,13 +46,13 @@ class DelayLoad(object):
 
     Supported formats:
 
-        - yaml (*.yaml, *.yml)
-        - json (*.json)
+    - yaml (``*.yaml``, ``*.yml``)
+    - json (``*.json``)
     """
-    def __init__(self, filepath):
+    def __init__(self, filepath) -> None:
         self.filepath = os.path.expanduser(filepath)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "%s(%s)" % (self.__class__.__name__, self.filepath)
 
     def get_value(self):
@@ -102,7 +99,7 @@ def remove_nones(**kwargs):
     return dict((k, v) for k, v in kwargs.items() if v is not None)
 
 
-def deep_update(dict1, dict2):
+def deep_update(dict1, dict2) -> None:
     """Perform a deep merge of `dict2` into `dict1`.
 
     Note that `dict2` and any nested dicts are unchanged.
@@ -167,7 +164,7 @@ def get_dict_diff(d1, d2):
     was affected.
 
     Returns:
-        3-tuple:
+        tuple: 3-tuple:
         - list of added keys;
         - list of removed key;
         - list of changed keys.
@@ -220,47 +217,56 @@ def get_dict_diff_str(d1, d2, title):
     return '\n'.join(lines)
 
 
-class cached_property(object):
-    """Simple property caching descriptor.
+if TYPE_CHECKING:
+    cached_property = property
+else:
+    class cached_property(object):
+        """Simple property caching descriptor.
 
-    Example:
+        Example:
 
-        >>> class Foo(object):
-        >>>     @cached_property
-        >>>     def bah(self):
-        >>>         print('bah')
-        >>>         return 1
-        >>>
-        >>> f = Foo()
-        >>> f.bah
-        bah
-        1
-        >>> f.bah
-        1
-    """
-    def __init__(self, func, name=None):
-        self.func = func
-        self.name = name or func.__name__
+            >>> class Foo(object):
+            >>>     @cached_property
+            >>>     def bah(self):
+            >>>         print('bah')
+            >>>         return 1
+            >>>
+            >>> f = Foo()
+            >>> f.bah
+            bah
+            1
+            >>> f.bah
+            1
+        """
+        def __init__(self, func, name=None) -> None:
+            self.func = func
+            # Make sure that Sphinx autodoc can follow and get the docstring from our wrapped function.
+            functools.update_wrapper(self, func)
+            self.name = name or func.__name__
 
-    def __get__(self, instance, owner=None):
-        if instance is None:
-            return self
+        def __get__(self, instance, owner=None):
+            if instance is None:
+                return self
 
-        result = self.func(instance)
-        try:
-            setattr(instance, self.name, result)
-        except AttributeError:
-            raise AttributeError("can't set attribute %r on %r"
-                                 % (self.name, instance))
-        return result
+            result = self.func(instance)
+            try:
+                setattr(instance, self.name, result)
+            except AttributeError:
+                raise AttributeError("can't set attribute %r on %r"
+                                     % (self.name, instance))
+            return result
 
-    @classmethod
-    def uncache(cls, instance, name):
-        if hasattr(instance, name):
-            delattr(instance, name)
+        # This is to silence Sphinx that complains that cached_property is not a callable.
+        def __call__(self):
+            raise RuntimeError("@cached_property should not be called.")
+
+        @classmethod
+        def uncache(cls, instance, name) -> None:
+            if hasattr(instance, name):
+                delattr(instance, name)
 
 
-class cached_class_property(object):
+class cached_class_property(Generic[T]):
     """Simple class property caching descriptor.
 
     Example:
@@ -277,10 +283,13 @@ class cached_class_property(object):
         >>> Foo.bah
         1
     """
-    def __init__(self, func, name=None):
+    def __init__(self, func: Callable[[Any], T], name=None) -> None:
         self.func = func
+        # Make sure that Sphinx autodoc can follow and get the docstring from our wrapped function.
+        # TODO: Doesn't work...
+        functools.update_wrapper(self, func)  # type: ignore[arg-type]
 
-    def __get__(self, instance, owner=None):
+    def __get__(self, instance, owner=None) -> T:
         assert owner
         name = "_class_property_" + self.func.__name__
         result = getattr(owner, name, KeyError)
@@ -288,19 +297,19 @@ class cached_class_property(object):
         if result is KeyError:
             result = self.func(owner)
             setattr(owner, name, result)
-        return result
+        return result  # type: ignore[return-value]
 
 
-class LazySingleton(object):
+class LazySingleton(Generic[T]):
     """A threadsafe singleton that initialises when first referenced."""
-    def __init__(self, instance_class, *nargs, **kwargs):
+    def __init__(self, instance_class: type[T], *nargs, **kwargs) -> None:
         self.instance_class = instance_class
         self.nargs = nargs
         self.kwargs = kwargs
         self.lock = Lock()
-        self.instance = None
+        self.instance: T | None = None
 
-    def __call__(self):
+    def __call__(self) -> T:
         if self.instance is None:
             try:
                 self.lock.acquire()
@@ -313,7 +322,7 @@ class LazySingleton(object):
         return self.instance
 
 
-class AttrDictWrapper(MutableMapping):
+class AttrDictWrapper(MutableMapping[str, Any]):
     """Wrap a custom dictionary with attribute-based lookup::
 
         >>> d = {'one': 1}
@@ -325,14 +334,14 @@ class AttrDictWrapper(MutableMapping):
         >>> assert dd.one == 1
         >>> assert d['one'] == 1
     """
-    def __init__(self, data=None):
+    def __init__(self, data=None) -> None:
         self.__dict__['_data'] = {} if data is None else data
 
     @property
-    def _data(self):
+    def _data(self) -> dict:
         return self.__dict__['_data']
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> Any:
         if attr.startswith('__') and attr.endswith('__'):
             d = self.__dict__
         else:
@@ -343,7 +352,7 @@ class AttrDictWrapper(MutableMapping):
             raise AttributeError("'%s' object has no attribute '%s'"
                                  % (self.__class__.__name__, attr))
 
-    def __setattr__(self, attr, value):
+    def __setattr__(self, attr, value) -> None:
         # For things like '__class__', for instance
         if attr.startswith('__') and attr.endswith('__'):
             super(AttrDictWrapper, self).__setattr__(attr, value)
@@ -352,25 +361,25 @@ class AttrDictWrapper(MutableMapping):
     def __getitem__(self, key):
         return self._data[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key, value) -> None:
         self._data[key] = value
 
-    def __delitem__(self, key):
+    def __delitem__(self, key) -> None:
         del self._data[key]
 
-    def __contains__(self, key):
+    def __contains__(self, key) -> bool:
         return key in self._data
 
     def __iter__(self):
         return iter(self._data)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self._data)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "%s(%r)" % (self.__class__.__name__, self._data)
 
     def copy(self):
@@ -379,7 +388,7 @@ class AttrDictWrapper(MutableMapping):
 
 class RO_AttrDictWrapper(AttrDictWrapper):
     """Read-only version of AttrDictWrapper."""
-    def __setattr__(self, attr, value):
+    def __setattr__(self, attr, value) -> None:
         self[attr]  # may raise 'no attribute' error
         raise AttributeError("'%s' object attribute '%s' is read-only"
                              % (self.__class__.__name__, attr))
@@ -445,7 +454,7 @@ def get_object_completions(instance, prefix, types=None, instance_types=None):
     attrs = dir(instance)
     try:
         for attr in instance:
-            if isinstance(attr, basestring):
+            if isinstance(attr, str):
                 attrs.append(attr)
     except TypeError:
         pass
@@ -511,14 +520,12 @@ class AttributeForwardMeta(type):
 
     Example:
 
-        >>> import six
-        >>>
         >>> class Foo(object):
         >>>     def __init__(self):
         >>>         self.a = "a_from_foo"
         >>>         self.b = "b_from_foo"
         >>>
-        >>> class Bah(six.with_metaclass(AttributeForwardMeta, object)):
+        >>> class Bah(object, metaclass=AttributeForwardMeta):
         >>>     keys = ["a", "b", "c"]
         >>>
         >>>     @property
@@ -600,7 +607,7 @@ class LazyAttributeMeta(type):
                 optional = isinstance(key, Optional)
                 while isinstance(key, Schema):
                     key = key._schema
-                if isinstance(key, basestring):
+                if isinstance(key, str):
                     keys.add(key)
 
                     if _defined(key):
@@ -623,7 +630,7 @@ class LazyAttributeMeta(type):
 
     @classmethod
     def _make_validate_data(cls):
-        def func(self):
+        def func(self) -> None:
             self.validated_data()
         return func
 

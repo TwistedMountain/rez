@@ -7,9 +7,9 @@ authors = ["joe.bloggs"]
 uuid = "156730d7122441e3a5745cc81361f49a"
 description = "floobtasticator"
 
-private_build_requires = ["build_util"]
+private_build_requires = ["build_util", "python"]
 
-def commands():
+def commands() -> None:
     env.PYTHONPATH.append('{root}/python')
 
 build_command = 'python {root}/build.py {install}'

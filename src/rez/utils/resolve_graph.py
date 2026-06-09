@@ -53,7 +53,7 @@ def _cycled_detail_from_graph(graph, cycled_edge):
         visited = list()
         while True:
             visited.append(node)
-            down = next((ne for ne in graph.node_neighbors[node]), None)
+            down = next((ne for ne in graph.node_neighbors[node] if ne not in visited), None)
             if down in cycled_edge:
                 visited.append(down)
                 break
@@ -83,7 +83,7 @@ def _conflicted_detail_from_graph(graph, conflicted_edge):
         visited = list()
         while True:
             visited.append(node)
-            down = next((ne for ne in graph.node_neighbors[node]), None)
+            down = next((ne for ne in graph.node_neighbors[node] if ne not in visited), None)
             if down is None:
                 break
 
@@ -118,12 +118,12 @@ def _get_node_label(graph, node):
     return _request_from_label(label_)
 
 
-def _is_request_node(graph, node):
+def _is_request_node(graph, node) -> bool:
     style = next(at[1] for at in graph.node_attr[node] if at[0] == "style")
     return "dashed" in style
 
 
-def _print_each_graph_edges(graph):
+def _print_each_graph_edges(graph) -> None:
     """for debug"""
     for (from_, to_), properties in graph.edge_properties.items():
         edge_status = properties["label"]

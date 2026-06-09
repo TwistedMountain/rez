@@ -1,10 +1,8 @@
-from __future__ import print_function
-
 from build_util import build_directory_recurse, check_visible
 import os.path
 
 
-def build(source_path, build_path, install_path, targets):
+def build(source_path, build_path, install_path, targets) -> None:
 
     # build requirement 'floob' should be visible
     check_visible("foo", "floob")

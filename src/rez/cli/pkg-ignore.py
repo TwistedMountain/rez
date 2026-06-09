@@ -5,10 +5,10 @@
 '''
 Disable a package so it is hidden from resolves.
 '''
-from __future__ import print_function
+from __future__ import annotations
 
 
-def setup_parser(parser, completions=False):
+def setup_parser(parser, completions: bool = False) -> None:
     parser.add_argument(
         "-u", "--unignore", action="store_true",
         help="Unignore a package.")
@@ -28,7 +28,7 @@ def setup_parser(parser, completions=False):
         PKG_action.completer = PackageCompleter
 
 
-def list_repos():
+def list_repos() -> None:
     from rez.config import config
     from rez.package_repository import package_repository_manager
 
@@ -39,7 +39,7 @@ def list_repos():
         print(str(repo))
 
 
-def list_repos_containing_pkg(pkg_name, pkg_version):
+def list_repos_containing_pkg(pkg_name, pkg_version) -> None:
     from rez.config import config
     from rez.package_repository import package_repository_manager
     import sys
@@ -61,9 +61,9 @@ def list_repos_containing_pkg(pkg_name, pkg_version):
         sys.exit(1)
 
 
-def command(opts, parser, extra_arg_groups=None):
+def command(opts, parser, extra_arg_groups=None) -> None:
     from rez.package_repository import package_repository_manager
-    from rez.vendor.version.requirement import VersionedObject
+    from rez.version import VersionedObject
     import sys
 
     obj = VersionedObject(opts.PKG)

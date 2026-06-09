@@ -5,7 +5,7 @@
 """
 Prints package completion strings.
 """
-from __future__ import print_function
+from __future__ import annotations
 
 import argparse
 
@@ -13,20 +13,20 @@ import argparse
 __doc__ = argparse.SUPPRESS
 
 
-def setup_parser(parser, completions=False):
+def setup_parser(parser, completions: bool = False) -> None:
     pass
 
 
-def command(opts, parser, extra_arg_groups=None):
+def command(opts, parser, extra_arg_groups=None) -> None:
     from rez.cli._util import subcommands
     import os
     import re
 
     # get comp info from environment variables
     comp_line = os.getenv("COMP_LINE", "")
-    comp_point = os.getenv("COMP_POINT", "")
+    comp_point_str = os.getenv("COMP_POINT", "")
     try:
-        comp_point = int(comp_point)
+        comp_point = int(comp_point_str)
     except:
         comp_point = len(comp_line)
 
@@ -62,7 +62,7 @@ def command(opts, parser, extra_arg_groups=None):
         cmds = [k for k, v in subcommands.items() if not v.get("hidden")]
 
         if prefix:
-            cmds = (x for x in cmds if x.startswith(prefix))
+            cmds = [x for x in cmds if x.startswith(prefix)]
         print(" ".join(cmds))
 
     if subcommand not in subcommands:
@@ -83,7 +83,7 @@ def command(opts, parser, extra_arg_groups=None):
             comp_point += len(s)
 
     # create parser for subcommand
-    from rez.backport.importlib import import_module
+    from importlib import import_module
     data = subcommands[subcommand]
     module_name = data.get("module_name", "rez.cli.%s" % subcommand)
     mod = import_module(module_name)

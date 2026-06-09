@@ -5,7 +5,7 @@
 """
 Functions for manipulating dot-based resolve graphs.
 """
-from __future__ import print_function
+from __future__ import annotations
 
 import os.path
 import sys
@@ -19,13 +19,10 @@ from rez.exceptions import PackageRequestError
 from rez.vendor.pygraph.readwrite.dot import read as read_dot
 from rez.vendor.pygraph.algorithms.accessibility import accessibility
 from rez.vendor.pygraph.classes.digraph import digraph
-from rez.vendor.six import six
+from typing import cast
 
 
-basestring = six.string_types[0]
-
-
-def read_graph_from_string(txt):
+def read_graph_from_string(txt: str) -> digraph:
     """Read a graph from a string, either in dot format, or our own
     compressed format.
 
@@ -33,10 +30,10 @@ def read_graph_from_string(txt):
         `pygraph.digraph`: Graph object.
     """
     if not txt.startswith('{'):
-        return read_dot(txt)  # standard dot format
+        return cast(digraph, read_dot(txt))  # standard dot format
 
     def conv(value):
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             return '"' + value + '"'
         else:
             return value
@@ -49,7 +46,7 @@ def read_graph_from_string(txt):
         attrs = [(k, conv(v)) for k, v in attrs]
 
         for value in values:
-            if isinstance(value, basestring):
+            if isinstance(value, str):
                 node_name = value
                 attrs_ = attrs
             else:
@@ -84,7 +81,7 @@ def write_compacted(g):
     d_edges = {}
 
     def conv(value):
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             return value.strip('"')
         else:
             return value
@@ -114,7 +111,7 @@ def write_compacted(g):
     return contents
 
 
-def write_dot(g):
+def write_dot(g: digraph) -> str:
     """Replacement for pygraph.readwrite.dot.write, which is dog slow.
 
     Note:
@@ -267,7 +264,7 @@ def save_graph_object(g, dest_file, fmt=None, image_ratio=None):
     return fmt
 
 
-def view_graph(graph_str, dest_file=None):
+def view_graph(graph_str, dest_file=None) -> None:
     """View a dot graph in an image viewer."""
     from rez.system import system
     from rez.config import config

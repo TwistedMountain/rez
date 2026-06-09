@@ -5,10 +5,10 @@
 '''
 Move a package from one repository to another.
 '''
-from __future__ import print_function
+from __future__ import annotations
 
 
-def setup_parser(parser, completions=False):
+def setup_parser(parser, completions: bool = False) -> None:
     parser.add_argument(
         "-d", "--dest-path", metavar="PATH", required=True,
         help="package repository to move PKG to.")
@@ -31,7 +31,7 @@ def setup_parser(parser, completions=False):
         pkg_action.completer = PackageCompleter
 
 
-def list_repos_containing_pkg(pkg_name, pkg_version):
+def list_repos_containing_pkg(pkg_name, pkg_version) -> None:
     from rez.config import config
     from rez.package_repository import package_repository_manager
     import sys
@@ -53,8 +53,8 @@ def list_repos_containing_pkg(pkg_name, pkg_version):
         sys.exit(1)
 
 
-def command(opts, parser, extra_arg_groups=None):
-    from rez.vendor.version.requirement import VersionedObject
+def command(opts, parser, extra_arg_groups=None) -> None:
+    from rez.version import VersionedObject
     from rez.packages import get_package_from_repository
     from rez.package_move import move_package
     import sys

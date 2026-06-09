@@ -9,8 +9,6 @@ Note that we subproc out to python at various points here because we can't use
 the current python interpreter - this is rez's, inside its installation
 virtualenv.
 """
-from __future__ import absolute_import, print_function
-
 from rez.bind._utils import check_version, find_exe, make_dirs, \
     get_version_in_python, run_python_command, log
 from rez.package_maker import make_package
@@ -22,11 +20,11 @@ import sys
 import os.path
 
 
-def commands():
+def commands() -> None:
     env.PYTHONPATH.append('{this.root}/python')
 
 
-def commands_with_bin():
+def commands_with_bin() -> None:
     env.PYTHONPATH.append('{this.root}/python')
     env.PATH.append('{this.root}/bin')
 
@@ -90,7 +88,7 @@ def bind(name, path, import_name=None, version_range=None, version=None,
         except RezBindError as e:
             print_warning(str(e))
 
-    def make_root(variant, root):
+    def make_root(variant, root) -> None:
         pypath = make_dirs(root, "python")
         copy_module(import_name, pypath)
 
