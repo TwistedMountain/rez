@@ -57,10 +57,10 @@ import sys
 ###############################################################################
 
 ### Do not move or delete this comment (__DOC_START__)
-if 'win' in sys.platform:
-   ENVL_CUSTOM_PATH = "~/AppData/Local/TMA/ENVlaunch"
-elif 'darwin' in sys.platform:
+if sys.platform == 'darwin':
    ENVL_CUSTOM_PATH = "~/Library/Application Support/TMA/ENVlaunch"
+elif 'win' in sys.platform:
+   ENVL_CUSTOM_PATH = "~/AppData/Local/TMA/ENVlaunch"
 else:
    ENVL_CUSTOM_PATH = "~/TMA/ENVlaunch"
 
