@@ -58,7 +58,7 @@ import sys
 
 ### Do not move or delete this comment (__DOC_START__)
 if sys.platform == 'darwin':
-   ENVL_CUSTOM_PATH = "~/Library/Application Support/TMA/ENVlaunch"
+   ENVL_CUSTOM_PATH = "~/Library/Application Support/tma/envlaunch"
 elif 'win' in sys.platform:
    ENVL_CUSTOM_PATH = "~/AppData/Local/TMA/ENVlaunch"
 else:
