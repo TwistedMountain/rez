@@ -333,9 +333,10 @@ package_cache_used_threshold = 80
 # Packages that are implicitly added to all package resolves, unless the
 # :option:`rez-env --no-implicit` flag is used.
 implicit_packages = [
-    os.environ.get('MACHINE_PLATFORM'),
-    os.environ.get('MACHINE_ARCH'),
-    os.environ.get('MACHINE_OS'),
+    "~tma_platform=={system.platform}",
+    "~platform=={system.platform}",
+    "~arch=={system.arch}",
+    "~os=={system.os}",
 ]
 
 # Override platform values from Platform.os and arch.
