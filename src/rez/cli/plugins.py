@@ -5,10 +5,10 @@
 """
 Get a list of a package's plugins.
 """
-from __future__ import print_function
+from __future__ import annotations
 
 
-def setup_parser(parser, completions=False):
+def setup_parser(parser, completions: bool = False) -> None:
     parser.add_argument(
         "--paths", type=str, default=None,
         help="set package search path")
@@ -21,7 +21,7 @@ def setup_parser(parser, completions=False):
         PKG_action.completer = PackageFamilyCompleter
 
 
-def command(opts, parser, extra_arg_groups=None):
+def command(opts, parser, extra_arg_groups=None) -> None:
     from rez.package_search import get_plugins
     from rez.config import config
     import os

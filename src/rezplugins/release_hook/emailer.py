@@ -5,8 +5,6 @@
 """
 Sends a post-release email
 """
-from __future__ import print_function
-
 from rez.release_hook import ReleaseHook
 from rez.system import system
 from email.mime.text import MIMEText
@@ -14,34 +12,30 @@ from rez.utils.logging_ import print_warning, print_error
 from rez.utils.yaml import load_yaml
 from rez.utils.scope import scoped_formatter
 from rez.vendor.schema.schema import Or
-from rez.vendor.six import six
 import os.path
 import smtplib
-
-
-basestring = six.string_types[0]
 
 
 class EmailReleaseHook(ReleaseHook):
 
     schema_dict = {
-        "subject": basestring,
-        "body": basestring,
-        "smtp_host": basestring,
+        "subject": str,
+        "body": str,
+        "smtp_host": str,
         "smtp_port": int,
-        "sender": basestring,
-        "recipients": Or(basestring, [basestring])
+        "sender": str,
+        "recipients": Or(str, [str])
     }
 
     @classmethod
-    def name(cls):
+    def name(cls) -> str:
         return "emailer"
 
-    def __init__(self, source_path):
+    def __init__(self, source_path) -> None:
         super(EmailReleaseHook, self).__init__(source_path)
 
     def post_release(self, user, install_path, variants, release_message=None,
-                     changelog=None, previous_version=None, **kwargs):
+                     changelog=None, previous_version=None, **kwargs) -> None:
         if not variants:
             return  # nothing was released
 
@@ -68,7 +62,7 @@ class EmailReleaseHook(ReleaseHook):
         subject = formatter.format(self.settings.subject)
         self.send_email(subject, body)
 
-    def send_email(self, subject, body):
+    def send_email(self, subject, body) -> None:
         if not self.settings.recipients:
             return  # nothing to do, sending email to nobody
 

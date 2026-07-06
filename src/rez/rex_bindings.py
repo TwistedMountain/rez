@@ -10,18 +10,17 @@ dependency between rex code in package.py files, and versions of Rez.
 The classes in this file are intended to have simple interfaces that hide
 unnecessary data from Rex, and provide APIs that will not change.
 """
-from rez.vendor.six import six
-from rez.vendor.version.version import VersionRange
-from rez.vendor.version.requirement import Requirement
+from __future__ import annotations
 
-
-basestring = six.string_types[0]
+from rez.rex import ActionInterpreter
+from rez.version import VersionRange, Version, VersionToken
+from rez.version import Requirement
 
 
 class Binding(object):
     """Abstract base class.
     """
-    def __init__(self, data=None):
+    def __init__(self, data=None) -> None:
         self._data = data or {}
 
     def _attr_error(self, attr):
@@ -37,6 +36,8 @@ class Binding(object):
 
 class VersionBinding(Binding):
     """Binds a version.Version object.
+
+    Examples:
 
         >>> v = VersionBinding(Version("1.2.3alpha"))
         >>> v.major
@@ -56,20 +57,20 @@ class VersionBinding(Binding):
         >>> v.as_tuple():
         (1, 2, '3alpha')
     """
-    def __init__(self, version):
+    def __init__(self, version: Version) -> None:
         super(VersionBinding, self).__init__()
         self.__version = version
 
     @property
-    def major(self):
+    def major(self) -> int:
         return self[0]
 
     @property
-    def minor(self):
+    def minor(self) -> int:
         return self[1]
 
     @property
-    def patch(self):
+    def patch(self) -> int | str:
         return self[2]
 
     def as_tuple(self):
@@ -85,8 +86,8 @@ class VersionBinding(Binding):
         except IndexError:
             return None
 
-    def __getitem(self, i):
-        def _convert(t):
+    def __getitem(self, i: int | slice):
+        def _convert(t: VersionToken) -> str | int:
             s = str(t)
             if s.isdigit() and (s[0] != '0' or s == '0'):
                 return int(s)
@@ -99,10 +100,10 @@ class VersionBinding(Binding):
         else:
             return _convert(tokens)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.__version)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.__version)
 
     def __iter__(self):
@@ -114,7 +115,8 @@ class VersionBinding(Binding):
 class VariantBinding(Binding):
     """Binds a packages.Variant object.
     """
-    def __init__(self, variant, cached_root=None, interpreter=None):
+    def __init__(self, variant, cached_root: str | None = None,
+                 interpreter: ActionInterpreter | None = None) -> None:
         doc = dict(version=VersionBinding(variant.version))
         super(VariantBinding, self).__init__(doc)
 
@@ -146,21 +148,21 @@ class VariantBinding(Binding):
 
             return value
 
-    def _is_in_package_cache(self):
+    def _is_in_package_cache(self) -> bool:
         return (self.__cached_root is not None)
 
-    def _attr_error(self, attr):
+    def _attr_error(self, attr: str):
         raise AttributeError("package %s has no attribute '%s'"
                              % (str(self), attr))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.__variant.qualified_package_name
 
 
 class RO_MappingBinding(Binding):
     """A read-only, dict-like object.
     """
-    def __init__(self, data):
+    def __init__(self, data) -> None:
         super(RO_MappingBinding, self).__init__(data)
 
     def get(self, name, default=None):
@@ -172,17 +174,17 @@ class RO_MappingBinding(Binding):
         else:
             self._attr_error(name)
 
-    def __contains__(self, name):
+    def __contains__(self, name) -> bool:
         return (name in self._data)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self._data.values())
 
 
 class VariantsBinding(RO_MappingBinding):
     """Binds a list of packages.VariantBinding objects, under the package name
     of each variant."""
-    def __init__(self, variant_bindings):
+    def __init__(self, variant_bindings) -> None:
         super(VariantsBinding, self).__init__(variant_bindings)
 
     def _attr_error(self, attr):
@@ -191,14 +193,14 @@ class VariantsBinding(RO_MappingBinding):
 
 class RequirementsBinding(RO_MappingBinding):
     """Binds a list of version.Requirement objects."""
-    def __init__(self, requirements):
+    def __init__(self, requirements) -> None:
         doc = dict((x.name, str(x)) for x in requirements)
         super(RequirementsBinding, self).__init__(doc)
 
-    def _attr_error(self, attr):
+    def _attr_error(self, attr: str):
         raise AttributeError("request does not exist: '%s'" % attr)
 
-    def get_range(self, name, default=None):
+    def get_range(self, name: str, default=None) -> Requirement | VersionRange | None:
         """Returns requirement version range object"""
         req_str = self._data.get(name)
         if req_str:
@@ -212,23 +214,26 @@ class RequirementsBinding(RO_MappingBinding):
 class EphemeralsBinding(RO_MappingBinding):
     """Binds a list of resolved ephemeral packages.
 
-    Note that the leading '.' is implied when referring to ephemerals. Eg:
+    Note:
+        The leading '.' is implied when referring to ephemerals. Eg:
 
-        # in package.py
-        def commands():
-            if "foo.cli" in ephemerals:  # will match '.foo.cli-*' request
+        .. code-block:: python
+
+           # in package.py
+           def commands():
+               if "foo.cli" in ephemerals:  # will match '.foo.cli-*' request
     """
-    def __init__(self, ephemerals):
+    def __init__(self, ephemerals) -> None:
         doc = dict(
             (x.name[1:], str(x))  # note: stripped leading '.'
             for x in ephemerals
         )
         super(EphemeralsBinding, self).__init__(doc)
 
-    def _attr_error(self, attr):
+    def _attr_error(self, attr: str):
         raise AttributeError("ephemeral does not exist: '%s'" % attr)
 
-    def get_range(self, name, default=None):
+    def get_range(self, name: str, default=None) -> Requirement | VersionRange | None:
         """Returns ephemeral version range object"""
         req_str = self._data.get(name)
         if req_str:
@@ -244,24 +249,28 @@ def intersects(obj, range_):
 
     Examples:
 
-        # in package.py
-        def commands():
-            # test a request
-            if intersects(request.maya, '2019+'):
-                info('requested maya allows >=2019.*')
+        .. code-block:: python
 
-            # tests if a resolved version intersects with given range
-            if intersects(resolve.maya, '2019+')
-                ...
+            # in package.py
+            def commands():
+                # test a request
+                if intersects(request.maya, '2019+'):
+                    info('requested maya allows >=2019.*')
 
-            # same as above
-            if intersects(resolve.maya.version, '2019+')
-                ...
+                # tests if a resolved version intersects with given range
+                if intersects(resolve.maya, '2019+')
+                    ...
 
-        # disable my cli tools if .foo.cli-0 was specified
-        def commands():
-            if intersects(ephemerals.get('foo.cli', '1'), '1'):
-                env.PATH.append('{root}/bin')
+                # same as above
+                if intersects(resolve.maya.version, '2019+')
+                    ...
+
+        .. code-block:: python
+
+            # disable my cli tools if .foo.cli-0 was specified
+            def commands():
+                if intersects(ephemerals.get('foo.cli', '1'), '1'):
+                    env.PATH.append('{root}/bin')
 
     Args:
         obj (VariantBinding or str): Object to test, either a
@@ -274,7 +283,7 @@ def intersects(obj, range_):
     range1 = VersionRange(range_)
 
     # eg 'if intersects(request.maya, ...)'
-    if isinstance(obj, basestring):
+    if isinstance(obj, str):
         req = Requirement(obj)
         if req.conflict:
             return False

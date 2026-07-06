@@ -5,16 +5,13 @@
 """
 Publishes a message to the broker.
 """
-from __future__ import print_function
+from __future__ import annotations
 
 from rez.release_hook import ReleaseHook
 from rez.utils.logging_ import print_error, print_debug
 from rez.utils.amqp import publish_message
-from rez.vendor.six import six
 from rez.config import config
-
-
-basestring = six.string_types[0]
+from typing import Any
 
 
 class AmqpReleaseHook(ReleaseHook):
@@ -38,30 +35,30 @@ class AmqpReleaseHook(ReleaseHook):
         }
     """
     schema_dict = {
-        "host":                     basestring,
-        "userid":                   basestring,
-        "password":                 basestring,
+        "host":                     str,
+        "userid":                   str,
+        "password":                 str,
         "connect_timeout":          int,
-        "exchange_name":            basestring,
-        "exchange_routing_key":     basestring,
+        "exchange_name":            str,
+        "exchange_routing_key":     str,
         "message_delivery_mode":    int,
         "message_attributes":       dict}
 
     @classmethod
-    def name(cls):
+    def name(cls) -> str:
         return "amqp"
 
-    def __init__(self, source_path):
+    def __init__(self, source_path) -> None:
         super(AmqpReleaseHook, self).__init__(source_path)
 
-    def post_release(self, user, install_path, variants, **kwargs):
+    def post_release(self, user, install_path, variants, **kwargs) -> None:
         if variants:
             package = variants[0].parent
         else:
             package = self.package
 
         # build the message dict
-        data = {}
+        data: dict[str, Any] = {}
         data["package"] = dict(
             name=package.name,
             version=str(package.version),
@@ -83,7 +80,7 @@ class AmqpReleaseHook(ReleaseHook):
 
         self.publish_message(data)
 
-    def publish_message(self, data):
+    def publish_message(self, data) -> None:
         if not self.settings.host:
             print_error("Did not publish message, host is not specified")
             return

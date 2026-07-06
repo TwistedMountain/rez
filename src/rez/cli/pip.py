@@ -5,21 +5,18 @@
 """
 Install a pip-compatible python package, and its dependencies, as rez packages.
 """
-from __future__ import print_function
+from __future__ import annotations
+
 from argparse import REMAINDER
 import logging
 
 
-def setup_parser(parser, completions=False):
+def setup_parser(parser, completions: bool = False) -> None:
     parser.add_argument(
         "--python-version", dest="py_ver", metavar="VERSION",
         help="python version (rez package) to use, default is latest. Note "
         "that the pip package(s) will be installed with a dependency on "
         "python-MAJOR.MINOR.")
-    parser.add_argument(
-        "--pip-version", dest="pip_ver", metavar="VERSION",
-        help="pip version (rez package) to use, default is latest."
-        " This option is deprecated and will be removed in the future.")
     parser.add_argument(
         "-i", "--install", action="store_true",
         help="install the package")
@@ -39,7 +36,7 @@ def setup_parser(parser, completions=False):
     )
 
 
-def command(opts, parser, extra_arg_groups=None):
+def command(opts, parser, extra_arg_groups=None) -> None:
     from rez.config import config
 
     # debug_package_release is used by rez.pip._verbose
@@ -49,24 +46,13 @@ def command(opts, parser, extra_arg_groups=None):
         logging.getLogger('rez').setLevel(logging.INFO)
 
     from rez.pip import pip_install_package
-    import warnings
 
     # a bit weird, but there used to be more options. Leave like this for now
     if not opts.install:
         parser.error("Expected one of: --install")
 
-    if opts.pip_ver:
-        with warnings.catch_warnings():
-            # Cause all warnings to always be triggered.
-            warnings.simplefilter("always")
-            warnings.warn(
-                "The option --pip-version is deprecated and will be removed in a future version",
-                category=DeprecationWarning
-            )
-
     pip_install_package(
         opts.PACKAGE,
-        pip_version=opts.pip_ver,
         python_version=opts.py_ver,
         release=opts.release,
         prefix=opts.prefix,

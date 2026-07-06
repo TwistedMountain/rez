@@ -2,12 +2,12 @@
 # Copyright Contributors to the Rez Project
 
 
-from __future__ import print_function
+from __future__ import annotations
 
 from rez.serialise import FileFormat
 from rez.package_resources import help_schema, late_bound
 from rez.vendor.schema.schema import Schema, Optional, And, Or, Use
-from rez.vendor.version.version import Version
+from rez.version import Version
 from rez.utils.schema import extensible_schema_dict
 from rez.utils.sourcecode import SourceCode
 from rez.utils.formatting import PackageRequest, indent, \
@@ -15,10 +15,10 @@ from rez.utils.formatting import PackageRequest, indent, \
 from rez.utils.schema import Required
 from rez.utils.yaml import dump_yaml
 from pprint import pformat
-from rez.vendor.six import six
+from typing import Any, TYPE_CHECKING
 
-
-basestring = six.string_types[0]
+if TYPE_CHECKING:
+    from rez.utils.typing import SupportsWrite
 
 
 # preferred order of keys in a package definition file
@@ -49,19 +49,19 @@ package_key_order = [
     'previous_revision']
 
 
-version_schema = Or(basestring, And(Version, Use(str)))
+version_schema = Or(str, And(Version, Use(str)))
 
-package_request_schema = Or(basestring, And(PackageRequest, Use(str)))
+package_request_schema = Or(str, And(PackageRequest, Use(str)))
 
-source_code_schema = Or(SourceCode, And(basestring, Use(SourceCode)))
+source_code_schema = Or(SourceCode, And(str, Use(SourceCode)))
 
 tests_schema = Schema({
-    Optional(basestring): Or(
-        Or(basestring, [basestring]),
+    Optional(str): Or(
+        Or(str, [str]),
         extensible_schema_dict({
-            "command": Or(basestring, [basestring]),
+            "command": Or(str, [str]),
             Optional("requires"): [package_request_schema],
-            Optional("run_on"): Or(basestring, [basestring]),
+            Optional("run_on"): Or(str, [str]),
             Optional("on_variants"): Or(
                 bool,
                 {
@@ -76,11 +76,11 @@ tests_schema = Schema({
 
 # package serialisation schema
 package_serialise_schema = Schema({
-    Required("name"):                   basestring,
+    Required("name"):                   str,
     Optional("version"):                version_schema,
-    Optional("description"):            basestring,
-    Optional("authors"):                [basestring],
-    Optional("tools"):                  late_bound([basestring]),
+    Optional("description"):            str,
+    Optional("authors"):                [str],
+    Optional("tools"):                  late_bound([str]),
 
     Optional('requires'):               late_bound([package_request_schema]),
     Optional('build_requires'):         late_bound([package_request_schema]),
@@ -100,28 +100,29 @@ package_serialise_schema = Schema({
     Optional('pre_test_commands'):      source_code_schema,
 
     Optional("help"):                   late_bound(help_schema),
-    Optional("uuid"):                   basestring,
+    Optional("uuid"):                   str,
     Optional("config"):                 dict,
 
     Optional('tests'):                  late_bound(tests_schema),
 
     Optional("timestamp"):              int,
     Optional('revision'):               object,
-    Optional('changelog'):              basestring,
-    Optional('release_message'):        Or(None, basestring),
+    Optional('changelog'):              str,
+    Optional('release_message'):        Or(None, str),
     Optional('previous_version'):       version_schema,
     Optional('previous_revision'):      object,
 
-    Optional(basestring):               object
+    Optional(str):               object
 })
 
 
-def dump_package_data(data, buf, format_=FileFormat.py, skip_attributes=None):
+def dump_package_data(data: dict, buf: SupportsWrite, format_: FileFormat = FileFormat.py,
+                      skip_attributes: list[str] | None = None) -> None:
     """Write package data to `buf`.
 
     Args:
         data (dict): Data source - must conform to `package_serialise_schema`.
-        buf (file-like object): Destination stream.
+        buf (typing.IO): Destination stream.
         format_ (`FileFormat`): Format to dump data in.
         skip_attributes (list of str): List of attributes to not print.
     """
@@ -156,7 +157,7 @@ def dump_package_data(data, buf, format_=FileFormat.py, skip_attributes=None):
 # the package file to see what the original commands were, but they don't get
 # processed by rex.
 #
-def _commented_old_command_annotations(sourcecode):
+def _commented_old_command_annotations(sourcecode: SourceCode) -> SourceCode:
     lines = sourcecode.source.split('\n')
     for i, line in enumerate(lines):
         if line.startswith("comment('OLD COMMAND:"):
@@ -168,7 +169,7 @@ def _commented_old_command_annotations(sourcecode):
     return other
 
 
-def _dump_package_data_yaml(items, buf):
+def _dump_package_data_yaml(items: list[tuple[str, Any]], buf: SupportsWrite) -> None:
     for i, (key, value) in enumerate(items):
         if isinstance(value, SourceCode) \
                 and key in ("commands", "pre_commands", "post_commands"):
@@ -181,7 +182,7 @@ def _dump_package_data_yaml(items, buf):
             print('', file=buf)
 
 
-def _dump_package_data_py(items, buf):
+def _dump_package_data_py(items: list[tuple[str, Any]], buf: SupportsWrite) -> None:
     print("# -*- coding: utf-8 -*-\n", file=buf)
 
     for i, (key, value) in enumerate(items):

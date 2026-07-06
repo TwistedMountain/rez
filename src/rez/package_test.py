@@ -2,39 +2,40 @@
 # Copyright Contributors to the Rez Project
 
 
+from __future__ import annotations
+
 from rez.config import config
 from rez.resolved_context import ResolvedContext
-from rez.packages import get_latest_package_from_string
+from rez.packages import get_latest_package_from_string, Package
 from rez.exceptions import RezError, PackageNotFoundError, PackageTestError
 from rez.utils.data_utils import RO_AttrDictWrapper
 from rez.utils.colorize import heading, Printer
 from rez.utils.logging_ import print_info, print_warning, print_error
-from rez.vendor.six import six
-from rez.vendor.version.requirement import Requirement, RequirementList
-from pipes import quote
+from rez.version import Requirement, RequirementList
+from shlex import quote
+import fnmatch
 import time
 import sys
 import os
 
 
-basestring = six.string_types[0]
-
-
 class PackageTestRunner(object):
     """Object for running a package's tests.
 
-    This runs the tests listed in the package's "tests" attribute.
+    This runs the tests listed in the package's :pkgdef:attr:`tests` attribute.
 
     An example tests entry in a package.py might look like this:
 
-        tests = {
-            "unit": "python -m unittest -s {root}/tests",
-            "CI": {
-                "command": "python {root}/ci_tests/main.py",
-                "requires": ["maya-2017"],
-                "replace": True
-            }
-        }
+    .. code-block:: python
+
+       tests = {
+           "unit": "python -m unittest -s {root}/tests",
+           "CI": {
+               "command": "python {root}/ci_tests/main.py",
+               "requires": ["maya-2017"],
+               "replace": True
+           }
+       }
 
     By default tests are run in an environment containing the current package.
 
@@ -42,36 +43,36 @@ class PackageTestRunner(object):
     command. If a dict, the "command" string is the command, and the "requires"
     list is added to the test env.
 
-    Command strings automatically expand references such as '{root}', much
-    as happens in a *commands* function.
+    Command strings automatically expand references such as ``{root}``, much
+    as happens in a :pkgdef:func:`commands` function.
 
     Commands can also be a list - in this case, the test process is launched
     directly, rather than interpreted via a shell.
     """
-    def __init__(self, package_request, use_current_env=False,
+    def __init__(self, package_request, use_current_env: bool = False,
                  extra_package_requests=None, package_paths=None, stdout=None,
-                 stderr=None, verbose=0, dry_run=False, stop_on_fail=False,
-                 cumulative_test_results=None, **context_kwargs):
+                 stderr=None, verbose: int = 0, dry_run: bool = False, stop_on_fail: bool = False,
+                 cumulative_test_results=None, **context_kwargs) -> None:
         """Create a package tester.
 
         Args:
-            package_request (str or `PackageRequest`): The package to test.
+            package_request (str or PackageRequest): The package to test.
             use_current_env (bool): If True, run the test directly in the current
                 rez-resolved environment, if there is one, and if it contains
                 packages that meet the test's requirements.
-            extra_package_requests (list of str or `PackageRequest`): Extra
+            extra_package_requests (list[str] or PackageRequest): Extra
                 requests, these are appended to the test environment.
             package_paths: List of paths to search for pkgs, defaults to
-                config.packages_path.
-            stdout (file-like object): Defaults to sys.stdout.
-            stderr (file-like object): Defaults to sys.stderr.
+                :data:`packages_path`.
+            stdout (typing.IO): Defaults to :data:`sys.stdout`.
+            stderr (typing.IO): Defaults to :data:`sys.stderr`.
             verbose (int): Verbose mode (valid values: 0, 1, 2)
             dry_run (bool): If True, do everything except actually run tests.
-            cumulative_test_results (`PackageTestResults`): If supplied, test
+            cumulative_test_results (PackageTestResults): If supplied, test
                 run results can be stored across multiple runners.
-            context_kwargs: Extra arguments which are passed to the
-                `ResolvedContext` instances used to run the tests within.
-                Ignored if `use_current_env` is True.
+            context_kwargs (dict[typing.Any, typing.Any]): Extra arguments which are passed to the
+                :class:`~rez.resolved_context.ResolvedContext` instances used to run the tests within.
+                Ignored if ``use_current_env`` is True.
         """
         self.package_request = package_request
         self.use_current_env = use_current_env
@@ -93,7 +94,7 @@ class PackageTestRunner(object):
                               else package_paths)
 
         self.test_results = PackageTestResults()
-        self.package = None
+        self.package: Package | None = None
         self.contexts = {}
         self.stopped_on_fail = False
 
@@ -105,7 +106,7 @@ class PackageTestRunner(object):
         """Get the target package.
 
         Returns:
-            `Package`: Package to run tests on.
+            Package: Package to run tests on.
         """
         if self.package is not None:
             return self.package
@@ -162,7 +163,7 @@ class PackageTestRunner(object):
 
                 if value is None:
                     return ("default" in run_on)
-                elif isinstance(value, basestring):
+                elif isinstance(value, str):
                     return (value in run_on)
                 else:
                     return bool(set(value) & set(run_on))
@@ -173,7 +174,7 @@ class PackageTestRunner(object):
             )
 
         if ran_once:
-            def _select(key, value):
+            def _select_kv(key, value) -> bool:
                 if isinstance(value, dict):
                     value = value.get("on_variants")
                 else:
@@ -186,7 +187,7 @@ class PackageTestRunner(object):
 
             tests_dict = dict(
                 (k, v) for k, v in tests_dict.items()
-                if _select(k, v)
+                if _select_kv(k, v)
             )
 
         return sorted(tests_dict.keys())
@@ -207,6 +208,22 @@ class PackageTestRunner(object):
             return []
 
         return self.get_package_test_names(package, run_on=run_on)
+
+    def find_requested_test_names(self, requested_tests):
+        # if no tests are explicitly specified, then run only those with a
+        # 'default' run_on tag
+        run_on = ["default"] if not requested_tests else None
+        pkg_test_names = self.get_test_names(run_on=run_on)
+        requested_test_names = set()
+
+        if not requested_tests:
+            # if no tests are explicitly specified, then return all tests
+            # found in the package
+            return pkg_test_names
+
+        for requested_test in requested_tests:
+            requested_test_names.update(set(fnmatch.filter(pkg_test_names, requested_test)))
+        return requested_test_names
 
     @property
     def num_tests(self):
@@ -232,7 +249,7 @@ class PackageTestRunner(object):
         """
         return self.test_results.num_skipped
 
-    def run_test(self, test_name):
+    def run_test(self, test_name, extra_test_args=None):
         """Run a test.
 
         Runs the test in its correct environment. Note that if tests share the
@@ -240,12 +257,16 @@ class PackageTestRunner(object):
 
         Args:
             test_name (str): Name of test to run.
+            extra_test_args (list of str): Any extra arguments that we want to
+                pass to the test command.
 
         Returns:
             int: Exit code of first failed test, or 0 if none failed. If the first
                 test to fail did so because it was not able to run (eg its
                 environment could not be configured), -1 is returned.
         """
+        if extra_test_args is None:
+            extra_test_args = []
         package = self.get_package()
         exitcode = 0
 
@@ -389,10 +410,18 @@ class PackageTestRunner(object):
                 continue
 
             # expand refs like {root} in commands
-            if isinstance(command, basestring):
+            if isinstance(command, str):
                 command = variant.format(command)
             else:
-                command = map(variant.format, command)
+                # Note that we convert the iterator to a list to
+                # make sure that we can consume the variable more than once.
+                command = [x for x in map(variant.format, command)]
+
+            if extra_test_args:
+                if isinstance(command, str):
+                    command = "{} {}".format(command, " ".join(map(quote, extra_test_args)))
+                else:
+                    command = list(map(quote, command)) + list(map(quote, extra_test_args))
 
             # run the test in the context
             if self.verbose:
@@ -400,7 +429,7 @@ class PackageTestRunner(object):
                     context.print_info(self.stdout)
                     print('')
 
-                if isinstance(command, basestring):
+                if isinstance(command, str):
                     cmd_str = command
                 else:
                     cmd_str = ' '.join(map(quote, command))
@@ -416,7 +445,7 @@ class PackageTestRunner(object):
                 )
                 continue
 
-            def _pre_test_commands(executor):
+            def _pre_test_commands(executor) -> None:
                 # run package.py:pre_test_commands() if present
                 pre_test_commands = getattr(variant, "pre_test_commands")
                 if not pre_test_commands:
@@ -472,17 +501,17 @@ class PackageTestRunner(object):
 
         return exitcode
 
-    def print_summary(self):
+    def print_summary(self) -> None:
         self.test_results.print_summary()
 
-    def _add_test_result(self, *nargs, **kwargs):
+    def _add_test_result(self, *nargs, **kwargs) -> None:
         self.test_results.add_test_result(*nargs, **kwargs)
 
         if self.cumulative_test_results:
             self.cumulative_test_results.add_test_result(*nargs, **kwargs)
 
     @classmethod
-    def _print_header(cls, txt, *nargs):
+    def _print_header(cls, txt, *nargs) -> None:
         pr = Printer(sys.stdout)
         pr(txt % nargs, heading)
 
@@ -506,11 +535,11 @@ class PackageTestRunner(object):
         # If the combined requirements, minus conflict requests, is equal to the
         # variant's requirements, then this variant is selected.
         #
-        reqs1 = RequirementList(x for x in reqlist if not x.conflict)
-        reqs2 = RequirementList(x for x in variant.variant_requires if not x.conflict)
+        reqs1 = RequirementList([x for x in reqlist if not x.conflict])
+        reqs2 = RequirementList([x for x in variant.variant_requires if not x.conflict])
         return (reqs1 == reqs2)
 
-    def _get_test_info(self, test_name, variant):
+    def _get_test_info(self, test_name: str, variant) -> dict | None:
         tests_dict = variant.tests or {}
         test_entry = tests_dict.get(test_name)
 
@@ -541,7 +570,7 @@ class PackageTestRunner(object):
         # construct run_on
         run_on = test_entry.get("run_on")
         if run_on:
-            if isinstance(run_on, basestring):
+            if isinstance(run_on, str):
                 run_on = [run_on]
         else:
             run_on = ["default"]
@@ -554,7 +583,7 @@ class PackageTestRunner(object):
             "on_variants": test_entry.get("on_variants", False)
         }
 
-    def _get_context(self, requires, quiet=False):
+    def _get_context(self, requires, quiet: bool = False):
 
         # if using current env, only return current context if it meets
         # requirements, otherwise return None
@@ -563,7 +592,7 @@ class PackageTestRunner(object):
             if current_context is None:
                 return None
 
-            reqs = map(Requirement, requires)
+            reqs = [Requirement(x) for x in requires]
             current_reqs = current_context.get_resolve_as_exact_requests()
 
             meets_requirements = (
@@ -593,6 +622,7 @@ class PackageTestRunner(object):
                     package_paths=self.package_paths,
                     buf=(f if quiet else None),
                     timestamp=self.timestamp,
+                    testing=True,
                     **self.context_kwargs
                 )
 
@@ -606,7 +636,7 @@ class PackageTestRunner(object):
     def _get_target_variants(self, test_name):
         """
         If the test is not variant-specific, then attempt to find the 'preferred'
-        variant (as per setting 'variant_select_mode'). Otherwise, just run tests
+        variant (as per setting :data:`variant_select_mode`). Otherwise, just run tests
         over all variants.
         """
         package = self.get_package()
@@ -645,37 +675,37 @@ class PackageTestRunner(object):
 
 
 class PackageTestResults(object):
-    """Contains results of running tests with a `PackageTestRunner`.
+    """Contains results of running tests with a :class:`PackageTestRunner`.
 
-    Use this class (and pass it to the `PackageTestRunner` constructor) if you
+    Use this class (and pass it to the :class:`PackageTestRunner` constructor) if you
     need to gather test run results from separate runners, and display them in
     a single table.
     """
     valid_statuses = ("success", "failed", "skipped")
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.test_results = []
 
     @property
-    def num_tests(self):
+    def num_tests(self) -> int:
         """Get the number of tests, regardless of stats.
         """
         return len(self.test_results)
 
     @property
-    def num_success(self):
+    def num_success(self) -> int:
         """Get the number of successful test runs.
         """
         return len([x for x in self.test_results if x["status"] == "success"])
 
     @property
-    def num_failed(self):
+    def num_failed(self) -> int:
         """Get the number of failed test runs.
         """
         return len([x for x in self.test_results if x["status"] == "failed"])
 
     @property
-    def num_skipped(self):
+    def num_skipped(self) -> int:
         """Get the number of skipped test runs.
         """
         return len([x for x in self.test_results if x["status"] == "skipped"])
@@ -691,7 +721,7 @@ class PackageTestResults(object):
             "description": description
         })
 
-    def print_summary(self):
+    def print_summary(self) -> None:
         from rez.utils.formatting import columnise
 
         pr = Printer(sys.stdout)

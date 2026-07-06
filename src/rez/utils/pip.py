@@ -5,10 +5,11 @@
 """
 Python packaging related utilities.
 """
+import sys
 import os.path
+from importlib.metadata import Distribution, DistributionFinder
 from email.parser import Parser
-
-import pkg_resources
+from pathlib import Path
 
 from rez.vendor.packaging.version import (
     parse as packaging_parse,
@@ -16,8 +17,8 @@ from rez.vendor.packaging.version import (
     InvalidVersion as packaging_InvalidVersion
 )
 from rez.vendor.packaging.requirements import Requirement as packaging_Requirement
-from rez.vendor.version.requirement import Requirement
-from rez.vendor.version.version import Version, VersionRange
+from rez.version import Requirement
+from rez.version import Version, VersionRange
 
 from rez.utils.logging_ import print_warning
 from rez.exceptions import PackageRequestError
@@ -42,30 +43,30 @@ def pip_to_rez_package_name(dist_name):
     return dist_name.replace("-", "_")
 
 
-def pip_to_rez_version(dist_version, allow_legacy=True):
+def pip_to_rez_version(dist_version, allow_legacy: bool = True):
     """Convert a distribution version to a rez compatible version.
 
     TODO [AJ] needs a table of example conversions.
 
     The python version schema specification isn't 100% compatible with rez.
 
-    1: version epochs (they make no sense to rez, so they'd just get stripped
-       of the leading N!;
-    2: python versions are case insensitive, so they should probably be
+    1. version epochs (they make no sense to rez, so they'd just get stripped
+       of the leading ``N!``;
+    2. python versions are case insensitive, so they should probably be
        lowercased when converted to a rez version.
-    3: local versions are also not compatible with rez
+    3. local versions are also not compatible with rez
 
     The canonical public version identifiers MUST comply with the following scheme:
-    [N!]N(.N)*[{a|b|rc}N][.postN][.devN]
+    ``[N!]N(.N)*[{a|b|rc}N][.postN][.devN]``
 
-    Epoch segment: N! - skip
-    Release segment: N(.N)* 0 as is
-    Pre-release segment: {a|b|c|rc|alpha|beta|pre|preview}N - always lowercase
-    Post-release segment: .{post|rev|r}N - always lowercase
-    Development release segment: .devN - always lowercase
+    Epoch segment: ``N!`` - skip
+    Release segment: N(.N)* 0`` as is
+    Pre-release segment: ``{a|b|c|rc|alpha|beta|pre|preview}N`` - always lowercase
+    Post-release segment: ``.{post|rev|r}N`` - always lowercase
+    Development release segment: ``.devN`` - always lowercase
 
     Local version identifiers MUST comply with the following scheme:
-    <public version identifier>[+<local version label>] - use - instead of +
+    ``<public version identifier>[+<local version label>]`` - use - instead of +
 
     Args:
         dist_version (str): The distribution version to be converted.
@@ -76,7 +77,7 @@ def pip_to_rez_version(dist_version, allow_legacy=True):
 
     Raises:
         InvalidVersion: When legacy mode is not allowed and a PEP440
-        incompatible version is detected.
+            incompatible version is detected.
 
     .. _PEP 440 (all possible matches):
         https://www.python.org/dev/peps/pep-0440/#appendix-b-parsing-version-strings-with-regular-expressions
@@ -164,20 +165,22 @@ def pip_specifier_to_rez_requirement(specifier):
 
     Example conversions:
 
-        |   PEP440    |     rez     |
-        |-------------|-------------|
-        | ==1         | 1+<1.1      |
-        | ==1.*       | 1           |
-        | >1          | 1.1+        |
-        | <1          | <1          |
-        | >=1         | 1+          |
-        | <=1         | <1.1        |
-        | ~=1.2       | 1.2+<2      |
-        | ~=1.2.3     | 1.2.3+<1.3  |
-        | !=1         | <1|1.1+     |
-        | !=1.2       | <1.2|1.2.1+ |
-        | !=1.*       | <1|2+       |
-        | !=1.2.*     | <1.2|1.3+   |
+    ============== ===============
+    PEP440         rez
+    ============== ===============
+    ``==1``        ``1+<1.1``
+    ``==1.*``      ``1``
+    ``>1``         ``1.1+``
+    ``<1``         ``<1``
+    ``>=1``        ``1+``
+    ``<=1``        ``<1.1``
+    ``~=1.2``      ``1.2+<2``
+    ``~=1.2.3``    ``1.2.3+<1.3``
+    ``!=1``        ``<1|1.1+``
+    ``!=1.2``      ``<1.2|1.2.1+``
+    ``!=1.*``      ``<1|2+``
+    ``!=1.2.*``    ``<1.2|1.3+``
+    ============== ===============
 
     Args:
         specifier (`package.SpecifierSet`): Pip specifier.
@@ -185,7 +188,7 @@ def pip_specifier_to_rez_requirement(specifier):
     Returns:
         `VersionRange`: Equivalent rez version range.
     """
-    def is_release(rez_ver):
+    def is_release(rez_ver) -> bool:
         parts = rez_ver.split('.')
         try:
             _ = int(parts[-1])  # noqa
@@ -324,8 +327,14 @@ def is_pure_python_package(installed_dist):
     setuptools_dist = convert_distlib_to_setuptools(installed_dist)
 
     # see https://www.python.org/dev/peps/pep-0566/#json-compatible-metadata
-    wheel_data = setuptools_dist.get_metadata('WHEEL')
-    wheel_data = Parser().parsestr(wheel_data)
+
+    wheel_data = None
+    for f in setuptools_dist.files:
+        if f.name == "WHEEL":
+            wheel_data = f.read_text()
+            break
+
+    wheel_data = Parser().parsestr(wheel_data) if wheel_data else {}
 
     # see https://www.python.org/dev/peps/pep-0427/#what-s-the-deal-with-purelib-vs-platlib
     is_purelib = wheel_data.get("Root-Is-Purelib", "").lower()
@@ -344,8 +353,16 @@ def is_entry_points_scripts_package(installed_dist):
     """
     setuptools_dist = convert_distlib_to_setuptools(installed_dist)
 
-    entry_map = setuptools_dist.get_entry_map()
-    return bool(entry_map.get("console_scripts") or entry_map.get("gui_scripts"))
+    if sys.version_info < (3, 10):
+        for entry_point in setuptools_dist.entry_points:
+            if entry_point.group in ["console_scripts", "gui_scripts"]:
+                return True
+        return False
+
+    console_scripts = setuptools_dist.entry_points.select(group="console_scripts")
+    gui_scripts = setuptools_dist.entry_points.select(group="gui_scripts")
+
+    return bool(console_scripts or gui_scripts)
 
 
 def get_rez_requirements(installed_dist, python_version, name_casings=None):
@@ -353,14 +370,16 @@ def get_rez_requirements(installed_dist, python_version, name_casings=None):
 
     Example result:
 
-        {
-            "requires": ["foo-1.2+<2"],
-            "variant_requires": ["future", "python-2.7"],
-            "metadata": {
-                # metadata pertinent to rez
-                ...
-            }
-        }
+    .. code-block:: python
+
+       {
+           "requires": ["foo-1.2+<2"],
+           "variant_requires": ["future", "python-2.7"],
+           "metadata": {
+               # metadata pertinent to rez
+               ...
+           }
+       }
 
     Each requirement has had its package name converted to the rez equivalent.
     The 'variant_requires' key contains requirements specific to the current
@@ -507,13 +526,41 @@ def convert_distlib_to_setuptools(installed_dist):
             to convert.
 
     Returns:
-        `pkg_resources.DistInfoDistribution`: Equivalent setuptools dist object.
+        `Distribution`: Equivalent importlib/setuptools dist object.
     """
+
+    # Localized from pkg_resources.safe_name
+    def safe_name(name: str) -> str:
+        import re
+        """Convert an arbitrary string to a standard distribution name
+
+        Any runs of non-alphanumeric/. characters are replaced with a single '-'.
+        """
+        return re.sub('[^A-Za-z0-9.]+', '-', name).lower()
+
+    class DirectPathScanner(DistributionFinder):
+        @classmethod
+        def find_distributions(cls, context=DistributionFinder.Context()):
+            for search_path in context.path:
+                for entry in os.scandir(search_path):
+                    if entry.is_dir() and (entry.name.endswith(".dist-info") or entry.name.endswith(".egg-info")):
+                        yield Distribution.at(Path(entry.path))
+
     path = os.path.dirname(installed_dist.path)
-    setuptools_dists = pkg_resources.find_distributions(path)
+
+    setuptools_dists = list(
+        DirectPathScanner.find_distributions(
+            context=DistributionFinder.Context(path=[path])
+        )
+    )
 
     for setuptools_dist in setuptools_dists:
-        if setuptools_dist.key == pkg_resources.safe_name(installed_dist.key):
+        if sys.version_info < (3, 10):
+            name = setuptools_dist.metadata["name"]
+        else:
+            name = setuptools_dist.name
+
+        if safe_name(name) == safe_name(installed_dist.key):
             return setuptools_dist
 
     return None

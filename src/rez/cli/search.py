@@ -5,13 +5,13 @@
 """
 Search for packages
 """
-from __future__ import print_function
+from __future__ import annotations
 
 import os
 import sys
 
 
-def setup_parser(parser, completions=False):
+def setup_parser(parser, completions: bool = False) -> None:
     from rez.package_search import ResourceSearchResultFormatter
 
     type_choices = ("package", "family", "variant", "auto")
@@ -32,7 +32,7 @@ def setup_parser(parser, completions=False):
         help="set package search path (ignores --no-local if set)")
     parser.add_argument(
         "-f", "--format", type=str,
-        help="format package output, eg --format='{qualified_name} | "
+        help="format package output, eg '{qualified_name} | "
         "{description}'. Valid fields include: %s" % format_choices)
     parser.add_argument(
         "--no-newlines", action="store_true",
@@ -57,9 +57,6 @@ def setup_parser(parser, completions=False):
         help="only show packages released after the given time. Supported "
         "formats are: epoch time (eg 1393014494), or relative time (eg -10s, "
         "-5m, -0.5h, -10d)")
-    parser.add_argument(
-        "-s", "--sort", action="store_true",
-        help="print results in sorted order (deprecated)")
     PKG_action = parser.add_argument(
         "PKG", type=str, nargs='?',
         help="packages to search, glob-style patterns are supported")
@@ -69,7 +66,7 @@ def setup_parser(parser, completions=False):
         PKG_action.completer = PackageCompleter
 
 
-def command(opts, parser, extra_arg_groups=None):
+def command(opts, parser, extra_arg_groups=None) -> None:
     from rez.package_search import ResourceSearcher, ResourceSearchResultFormatter
     from rez.utils.formatting import get_epoch_time_from_str
     from rez.config import config

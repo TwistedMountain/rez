@@ -5,30 +5,29 @@
 """
 Binds rez-gui as a rez package.
 """
-from __future__ import absolute_import
 import rez
 from rez.package_maker import make_package
 from rez.bind._utils import check_version, make_dirs
 from rez.system import system
-from rez.vendor.version.version import Version
+from rez.version import Version
 from rez.utils.lint_helper import env
 from rez.utils.execution import create_executable_script
 import shutil
 import os.path
 
 
-def setup_parser(parser):
+def setup_parser(parser) -> None:
     parser.add_argument(
         "--gui-lib", type=str, default="PyQt-4", metavar="PKG",
         help="manually specify the gui lib to use (default: %(default)s).")
 
 
-def commands():
+def commands() -> None:
     env.PYTHONPATH.append('{this.root}')
     env.PATH.append('{this.root}/bin')
 
 
-def rez_gui_source():
+def rez_gui_source() -> None:
     from rez.cli._main import run
     run("gui")
 
@@ -44,7 +43,7 @@ def bind(path, version_range=None, opts=None, parser=None):
 
     gui_lib = getattr(opts, "gui_lib", "")
 
-    def make_root(variant, root):
+    def make_root(variant, root) -> None:
         # copy source
         rez_path = rez.__path__[0]
         site_path = os.path.dirname(rez_path)
