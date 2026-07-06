@@ -1,12 +1,10 @@
-from __future__ import print_function
-
 import shutil
 import os.path
 
 
-def build(source_path, build_path, install_path, targets):
+def build(source_path, build_path, install_path, targets) -> None:
 
-    def _copy(src, dest):
+    def _copy(src, dest) -> None:
         print("copying %s to %s..." % (src, dest))
         if os.path.exists(dest):
             shutil.rmtree(dest)

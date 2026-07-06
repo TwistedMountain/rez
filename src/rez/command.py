@@ -2,6 +2,8 @@
 # Copyright Contributors to the Rez Project
 
 
+from __future__ import annotations
+
 from rez.config import config
 
 
@@ -11,15 +13,18 @@ class Command(object):
     To register plugin and expose subcommand, the plugin module..
 
     * MUST have a module-level docstring (used as the command help)
-    * MUST provide a `setup_parser()` function
-    * MUST provide a `command()` function
-    * MUST provide a `register_plugin()` function
-    * SHOULD have a module-level attribute `command_behavior`
+    * MUST provide a ``setup_parser()`` function
+    * MUST provide a ``command()`` function
+    * MUST provide a ``register_plugin()`` function
+    * SHOULD have a module-level attribute ``command_behavior``
 
-    For example, a plugin named 'foo' and this is the `foo.py`:
+    For example, a plugin named 'foo' and this is the ``foo.py``:
 
-        '''The docstring for command help, this is required.
-        '''
+    .. code-block:: python
+
+        \"""
+        The docstring for command help, this is required.
+        \"""
         from rez.command import Command
 
         command_behavior = {
@@ -45,11 +50,11 @@ class Command(object):
             return CommandFoo
 
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self.type_settings = config.plugins.extension
         self.settings = self.type_settings.get(self.name())
 
     @classmethod
-    def name(cls):
+    def name(cls) -> str:
         """Return the name of the Command and rez-subcommand."""
         raise NotImplementedError

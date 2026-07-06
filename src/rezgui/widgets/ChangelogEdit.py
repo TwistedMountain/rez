@@ -3,11 +3,10 @@
 
 
 from Qt import QtCore, QtWidgets, QtGui
-import cgi
-
+import html
 
 def plaintext_to_html(txt):
-    out = cgi.escape(txt)
+    out = html.escape(txt)
     out = out.replace('\t', "    ")
     out = out.replace(' ', "&nbsp;")
     out = out.replace('\n', "<br>")
@@ -15,12 +14,12 @@ def plaintext_to_html(txt):
 
 
 class ChangelogEdit(QtWidgets.QPlainTextEdit):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None) -> None:
         super(ChangelogEdit, self).__init__(parent)
         self.setReadOnly(True)
         self.setUndoRedoEnabled(False)
 
-    def set_packages(self, packages):
+    def set_packages(self, packages) -> None:
         # note - I'm not just using appendHtml()/appendPlainText, because there's
         # a qt bug causing this to mess up the formatting. Hence the need to
         # convert plaintext to html manually.
@@ -45,11 +44,11 @@ class ChangelogEdit(QtWidgets.QPlainTextEdit):
 
 
 class VariantChangelogEdit(ChangelogEdit):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None) -> None:
         super(VariantChangelogEdit, self).__init__(parent)
         self.variant = None
 
-    def set_variant(self, variant):
+    def set_variant(self, variant) -> None:
         if variant is None:
             self.clear()
         else:

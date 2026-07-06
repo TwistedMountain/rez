@@ -6,26 +6,29 @@
 test configuration settings
 """
 import unittest
-from rez.tests.util import TestBase
+from rez.tests.util import TestBase, TempdirMixin, restore_os_environ
 from rez.exceptions import ConfigurationError
-from rez.config import Config, get_module_root_config, _replace_config
+from rez.config import Config, get_module_root_config, _replace_config, _Deprecation
 from rez.system import system
 from rez.utils.data_utils import RO_AttrDictWrapper
 from rez.packages import get_developer_package
-from rez.vendor.six import six
+from rez.deprecations import RezDeprecationWarning, warn
 import os
 import os.path
 import subprocess
+import functools
+import shutil
+import unittest.mock
 
 
 class TestConfig(TestBase):
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         cls.settings = {}
         cls.root_config_file = get_module_root_config()
         cls.config_path = cls.data_path("config")
 
-    def _test_basic(self, c):
+    def _test_basic(self, c) -> None:
         self.assertEqual(type(c.warn_all), bool)
         self.assertEqual(type(c.build_directory), str)
 
@@ -38,7 +41,7 @@ class TestConfig(TestBase):
         # plugin settings common to a plugin type
         self.assertEqual(type(p.release_vcs.tag_name), str)
 
-    def _test_overrides(self, c):
+    def _test_overrides(self, c) -> None:
         c.override("debug_none", True)
         c.override("build_directory", "floober")
         c.override("plugins.release_vcs.tag_name", "bah")
@@ -64,7 +67,7 @@ class TestConfig(TestBase):
 
         self._test_basic(c)
 
-    def test_1(self):
+    def test_1(self) -> None:
         """Test just the root config file."""
 
         # do a full validation of a config
@@ -97,7 +100,7 @@ class TestConfig(TestBase):
 
         self._test_overrides(c)
 
-    def test_2(self):
+    def test_2(self) -> None:
         """Test a config with an overriding file."""
         conf = os.path.join(self.config_path, "test1.yaml")
         c = Config([self.root_config_file, conf], locked=True)
@@ -111,7 +114,7 @@ class TestConfig(TestBase):
 
         self._test_overrides(c)
 
-    def test_3(self):
+    def test_3(self) -> None:
         """Test environment variable config overrides."""
         c = Config([self.root_config_file], locked=False)
 
@@ -136,7 +139,7 @@ class TestConfig(TestBase):
         os.environ["BUILD_DIRECTORY"] = "flaabs"
         self._test_overrides(c)
 
-    def test_4(self):
+    def test_4(self) -> None:
         """Test package config overrides."""
         conf = os.path.join(self.config_path, "test2.py")
         config2 = Config([self.root_config_file, conf])
@@ -169,7 +172,7 @@ class TestConfig(TestBase):
 
             self._test_overrides(c)
 
-    def test_5(self):
+    def test_5(self) -> None:
         """Test misconfigurations."""
 
         # overrides set to bad types
@@ -196,7 +199,7 @@ class TestConfig(TestBase):
         with self.assertRaises(ConfigurationError):
             _ = c.debug_all  # noqa
 
-    def test_6(self):
+    def test_6(self) -> None:
         """Test setting of dict values from environ"""
         from rez.config import Dict
         from rez.vendor.schema.schema import Schema
@@ -229,7 +232,7 @@ class TestConfig(TestBase):
         finally:
             os.environ = old_environ
 
-    def test_7(self):
+    def test_7(self) -> None:
         """Test path list environment variable with whitespace."""
         c = Config([self.root_config_file], locked=False)
 
@@ -274,14 +277,15 @@ class TestConfig(TestBase):
                 stdout = subprocess.check_output(
                     config_args + ["--json", config_key],
                     env=env,
+                    text=True,
                 )
                 self.assertEqual(
-                    six.ensure_str(stdout).strip(),
-                    six.ensure_str(json.dumps(getattr(c, config_key))),
+                    stdout.strip(),
+                    json.dumps(getattr(c, config_key)),
                 )
 
                 # Test setting via env var and fetching custom value
-                test_json_value = six.ensure_str(json.dumps(test_value))
+                test_json_value = json.dumps(test_value)
                 env["REZ_%s_JSON" % config_key.upper()] = test_json_value
                 stdout = subprocess.check_output(
                     config_args + ["--json", config_key],
@@ -291,6 +295,100 @@ class TestConfig(TestBase):
             except subprocess.CalledProcessError as error:
                 print(error.stdout)
                 raise
+
+
+class TestDeprecations(TestBase, TempdirMixin):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.settings = {}
+        TempdirMixin.setUpClass()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        TempdirMixin.tearDownClass()
+
+    def test_deprecation_from_user_config(self) -> None:
+        user_home = os.path.join(self.root, "user_home")
+        self.addCleanup(functools.partial(shutil.rmtree, user_home))
+
+        os.makedirs(user_home)
+
+        with open(os.path.join(user_home, ".rezconfig.py"), "w") as fd:
+            fd.write("packages_path = ['/tmp/asd']")
+
+        fake_deprecated_settings = {
+            "packages_path": _Deprecation("0.0.0"),
+        }
+
+        with unittest.mock.patch(
+            "rez.config._deprecated_settings",
+            fake_deprecated_settings
+        ):
+            with restore_os_environ():
+                os.environ["HOME"] = user_home
+                # On Windows, os.path.expanduser will read HOME and then USERPROFILE with Python 3.7.
+                # https://docs.python.org/3.7/library/os.path.html#os.path.expanduser
+                # Also on Windows but for Python 3.8+, it will look for USERPROFILE and then HOME.
+                # https://docs.python.org/3.8/library/os.path.html#os.path.expanduser
+                os.environ["USERPROFILE"] = user_home
+                config = Config._create_main_config()
+                with self.assertWarns(RezDeprecationWarning) as warning:
+                    _ = config.data
+                    # Assert just to ensure the test was set up properly.
+                    self.assertEqual(config.data["packages_path"], ["/tmp/asd"])
+
+                self.assertEqual(
+                    str(warning.warning),
+                    "config setting named 'packages_path' is deprecated and will be removed in 0.0.0.",
+                )
+
+    def test_deprecation_from_env_var(self) -> None:
+        fake_deprecated_settings = {
+            "packages_path": _Deprecation("0.0.0"),
+        }
+
+        with unittest.mock.patch(
+            "rez.config._deprecated_settings",
+            fake_deprecated_settings
+        ):
+            with restore_os_environ():
+                # Test with non-json env var
+                os.environ["REZ_PACKAGES_PATH"] = "/tmp/asd2"
+                os.environ["REZ_DISABLE_HOME_CONFIG"] = "1"
+                config = Config._create_main_config()
+                with self.assertWarns(RezDeprecationWarning) as warning:
+                    _ = config.data
+                    # Assert just to ensure the test was set up properly.
+                    self.assertEqual(config.data["packages_path"], ["/tmp/asd2"])
+
+                self.assertEqual(
+                    str(warning.warning),
+                    "config setting named 'packages_path' (configured through the "
+                    "REZ_PACKAGES_PATH environment variable) is deprecated and will "
+                    "be removed in 0.0.0.",
+                )
+
+            with restore_os_environ():
+                # Test with json env var
+                os.environ["REZ_PACKAGES_PATH_JSON"] = '["/tmp/asd2"]'
+                os.environ["REZ_DISABLE_HOME_CONFIG"] = "1"
+                config = Config._create_main_config()
+                with self.assertWarns(RezDeprecationWarning) as warning:
+                    _ = config.data
+                    # Assert just to ensure the test was set up properly.
+                    self.assertEqual(config.data["packages_path"], ["/tmp/asd2"])
+
+                self.assertEqual(
+                    str(warning.warning),
+                    "config setting named 'packages_path' (configured through the "
+                    "REZ_PACKAGES_PATH_JSON environment variable) is deprecated and will "
+                    "be removed in 0.0.0.",
+                )
+
+    def test_non_preformatted_warning(self) -> None:
+        with self.assertWarns(DeprecationWarning) as warning:
+            warn('Warning Message', DeprecationWarning, pre_formatted=False)
+        self.assertEqual(str(warning.warning), 'Warning Message')
 
 
 if __name__ == "__main__":

@@ -2,7 +2,8 @@
 # Copyright Contributors to the Rez Project
 
 
-from __future__ import absolute_import
+from __future__ import annotations
+
 from rez import __version__
 from rez.utils.data_utils import AttrDictWrapper, RO_AttrDictWrapper, \
     convert_dicts, cached_property, cached_class_property, LazyAttributeMeta, \
@@ -15,17 +16,43 @@ from rez import module_root_path
 from rez.system import system
 from rez.vendor.schema.schema import Schema, SchemaError, And, Or, Use
 from rez.vendor import yaml
-from rez.vendor.six import six
 from rez.vendor.yaml.error import YAMLError
-from rez.backport.lru_cache import lru_cache
+import rez.deprecations
 from contextlib import contextmanager
+from functools import lru_cache
 from inspect import ismodule
 import os
 import re
 import copy
+from typing import Any, Protocol, TypeVar, TYPE_CHECKING
 
 
-basestring = six.string_types[0]
+T = TypeVar("T")
+
+
+class Validatable(Protocol):
+    def validate(self, data: T) -> T:
+        pass
+
+
+class _Deprecation(object):
+    def __init__(self, removed_in, extra=None) -> None:
+        self.__removed_in = removed_in
+        self.__extra = extra or ""
+
+    def get_message(self, name: str, env_var: bool | str = False):
+        if self.__removed_in:
+            return (
+                "config setting named {0!r} {1}is "
+                "deprecated and will be removed in {2}. {3}"
+            ).format(
+                name,
+                "(configured through the {0} environment variable) ".format(env_var)
+                if env_var
+                else "",
+                self.__removed_in,
+                self.__extra
+            ).strip()
 
 
 # -----------------------------------------------------------------------------
@@ -35,23 +62,23 @@ basestring = six.string_types[0]
 class Setting(object):
     """Setting subclasses implement lazy setting validators.
 
-    Note that lazy setting validation only happens on master configuration
+    Note that lazy setting validation only happens on main configuration
     settings - plugin settings are validated on load only.
     """
-    schema = Schema(object)
+    schema: Validatable = Schema(object)
 
-    def __init__(self, config, key):
+    def __init__(self, config, key) -> None:
         self.config = config
         self.key = key
 
     @property
-    def _env_var_name(self):
+    def _env_var_name(self) -> str:
         return "REZ_%s" % self.key.upper()
 
     def _parse_env_var(self, value):
         raise NotImplementedError
 
-    def validate(self, data):
+    def validate(self, data: Any) -> Any:
         try:
             data = self._validate(data)
             data = self.schema.validate(data)
@@ -72,13 +99,31 @@ class Setting(object):
             # next, env-var
             value = os.getenv(self._env_var_name)
             if value is not None:
+                if self.key in _deprecated_settings:
+                    rez.deprecations.warn(
+                        _deprecated_settings[self.key].get_message(
+                            self.key, env_var=self._env_var_name
+                        ),
+                        rez.deprecations.RezDeprecationWarning,
+                        pre_formatted=True,
+                        filename=self._env_var_name,
+                    )
                 return self._parse_env_var(value)
 
             # next, JSON-encoded env-var
             varname = self._env_var_name + "_JSON"
             value = os.getenv(varname)
             if value is not None:
-                from rez.utils import json
+                if self.key in _deprecated_settings:
+                    rez.deprecations.warn(
+                        _deprecated_settings[self.key].get_message(
+                            self.key, env_var=varname
+                        ),
+                        rez.deprecations.RezDeprecationWarning,
+                        pre_formatted=True,
+                        filename=varname,
+                    )
+                import json
 
                 try:
                     return json.loads(value)
@@ -101,25 +146,25 @@ class Setting(object):
 
 
 class Str(Setting):
-    schema = Schema(basestring)
+    schema: Validatable = Schema(str)
 
     def _parse_env_var(self, value):
         return value
 
 
 class Char(Setting):
-    schema = Schema(basestring, lambda x: len(x) == 1)
+    schema = Schema(str, lambda x: len(x) == 1)
 
     def _parse_env_var(self, value):
         return value
 
 
 class OptionalStr(Str):
-    schema = Or(None, basestring)
+    schema = Or(None, str)
 
 
 class StrList(Setting):
-    schema = Schema([basestring])
+    schema: Validatable = Schema([str])
     sep = ','
 
     def _parse_env_var(self, value):
@@ -136,7 +181,7 @@ class PipInstallRemaps(Setting):
 
     schema = Schema([{key: And(str, len) for key in KEYS}])
 
-    def validate(self, data):
+    def validate(self, data: list) -> list:
         """Extended to substitute regex-escaped path tokens."""
         return [
             {
@@ -150,8 +195,7 @@ class PipInstallRemaps(Setting):
 
 
 class OptionalStrList(StrList):
-    schema = Or(And(None, Use(lambda x: [])),
-                [basestring])
+    schema = Or(And(None, Use(lambda x: [])), [str])
 
 
 class PathList(StrList):
@@ -185,12 +229,12 @@ class Float(Setting):
 
 
 class Bool(Setting):
-    schema = Schema(bool)
+    schema: Validatable = Schema(bool)
     true_words = frozenset(["1", "true", "t", "yes", "y", "on"])
     false_words = frozenset(["0", "false", "f", "no", "n", "off"])
     all_words = true_words | false_words
 
-    def _parse_env_var(self, value):
+    def _parse_env_var(self, value) -> bool:
         value = value.lower()
         if value in self.true_words:
             return True
@@ -221,7 +265,7 @@ class ForceOrBool(Bool):
 
 
 class Dict(Setting):
-    schema = Schema(dict)
+    schema: Validatable = Schema(dict)
 
     def _parse_env_var(self, value):
         items = value.split(",")
@@ -289,7 +333,7 @@ class ExecutableScriptMode_(Str):
 
 
 class OptionalStrOrFunction(Setting):
-    schema = Or(None, basestring, callable)
+    schema = Or(None, str, callable)
 
     def _parse_env_var(self, value):
         # note: env-var override only supports string, eg 'mymodule.preprocess_func'
@@ -363,6 +407,7 @@ config_schema = Schema({
     "release_packages_path":                        Str,
     "dot_image_format":                             Str,
     "build_directory":                              Str,
+    "default_build_process":                        Str,
     "documentation_url":                            Str,
     "suite_visibility":                             SuiteVisibility_,
     "rez_tools_visibility":                         RezToolsVisibility_,
@@ -400,6 +445,7 @@ config_schema = Schema({
     "alias_back":                                   OptionalStr,
     "package_preprocess_function":                  OptionalStrOrFunction,
     "package_preprocess_mode":                      PreprocessMode_,
+    "error_on_missing_variant_requires":            Bool,
     "context_tracking_host":                        OptionalStr,
     "variant_shortlinks_dirname":                   OptionalStr,
     "build_thread_count":                           BuildThreadCount_,
@@ -413,12 +459,14 @@ config_schema = Schema({
     "shell_error_truncate_cap":                     Int,
     "package_cache_log_days":                       Int,
     "package_cache_max_variant_days":               Int,
+    "package_cache_space_buffer":                   Int,
+    "package_cache_used_threshold":                 Int,
     "package_cache_clean_limit":                    Float,
     "allow_unversioned_packages":                   Bool,
-    "rxt_as_yaml":                                  Bool,
     "package_cache_during_build":                   Bool,
     "package_cache_local":                          Bool,
     "package_cache_same_device":                    Bool,
+    "package_cache_async":                          Bool,
     "color_enabled":                                ForceOrBool,
     "resolve_caching":                              Bool,
     "cache_package_files":                          Bool,
@@ -441,6 +489,7 @@ config_schema = Schema({
     "debug_memcache":                               Bool,
     "debug_resolve_memcache":                       Bool,
     "debug_context_tracking":                       Bool,
+    "debug_shell_startup":                          Bool,
     "debug_all":                                    Bool,
     "debug_none":                                   Bool,
     "quiet":                                        Bool,
@@ -449,13 +498,12 @@ config_schema = Schema({
     "default_relocatable":                          Bool,
     "set_prompt":                                   Bool,
     "prefix_prompt":                                Bool,
+    # Note that if you want to remove a warn_* or debug_* config, you will
+    # need to search for "config.warn(" or "config.debug(" to see if it's used.
     "warn_old_commands":                            Bool,
     "error_old_commands":                           Bool,
     "debug_old_commands":                           Bool,
-    "warn_commands2":                               Bool,
-    "error_commands2":                              Bool,
     "rez_1_environment_variables":                  Bool,
-    "rez_1_cmake_variables":                        Bool,
     "disable_rez_1_compatibility":                  Bool,
     "make_package_temporarily_writable":            Bool,
     "read_package_cache":                           Bool,
@@ -476,11 +524,21 @@ config_schema = Schema({
 })
 
 
+# List of settings that are deprecated and should raise
+# deprecation warnings if referenced in config files.
+_deprecated_settings = {
+    "warn_old_commands": _Deprecation("the future"),
+    "error_old_commands": _Deprecation("the future"),
+    "rez_1_environment_variables": _Deprecation("the future"),
+    "disable_rez_1_compatibility": _Deprecation("the future")
+}
+
+
 # settings common to each plugin type
 _plugin_config_dict = {
     "release_vcs": {
-        "tag_name":                     basestring,
-        "releasable_branches":          Or(None, [basestring]),
+        "tag_name":                     str,
+        "releasable_branches":          Or(None, [str]),
         "check_tag":                    bool
     }
 }
@@ -490,21 +548,28 @@ _plugin_config_dict = {
 # Config
 # -----------------------------------------------------------------------------
 
-class Config(six.with_metaclass(LazyAttributeMeta, object)):
+class Config(object, metaclass=LazyAttributeMeta):
     """Rez configuration settings.
 
     You should call the `create_config` function, rather than constructing a
     `Config` object directly.
 
     Config files are merged with other config files to create a `Config`
-    instance. The 'rezconfig' file in rez acts as the master - other config
-    files update the master configuration to create the final config. See the
+    instance. The 'rezconfig' file in rez acts as the primary - other config
+    files update the primary configuration to create the final config. See the
     comments at the top of 'rezconfig' for more details.
     """
     schema = config_schema
     schema_error = ConfigurationError
 
-    def __init__(self, filepaths, overrides=None, locked=False):
+    if TYPE_CHECKING:
+        # mypy: The use of LazyAttributeMeta means that this class generates hundreds
+        # of spurious attribute errors.  Adding this for the type analysis will silence
+        # them until the use of LazyAttributeMeta can be addressed.
+        def __getattr__(self, item: str) -> Any:
+            pass
+
+    def __init__(self, filepaths: list[str], overrides=None, locked: bool = False) -> None:
         """Create a config.
 
         Args:
@@ -515,7 +580,7 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
                 ignored.
         """
         self.filepaths = filepaths
-        self._sourced_filepaths = None
+        self._sourced_filepaths: list[str] | None = None
         self.overrides = overrides or {}
         self.locked = locked
 
@@ -523,7 +588,7 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
         """Get the value of a setting."""
         return getattr(self, key, default)
 
-    def copy(self, overrides=None, locked=False):
+    def copy(self, overrides=None, locked: bool = False) -> Config:
         """Create a separate copy of this config."""
         other = copy.copy(self)
 
@@ -535,7 +600,7 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
         other._uncache()
         return other
 
-    def override(self, key, value):
+    def override(self, key: str, value):
         """Set a setting to the given value.
 
         Note that `key` can be in dotted form, eg
@@ -550,10 +615,10 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
             self.overrides[key] = value
             self._uncache(key)
 
-    def is_overridden(self, key):
+    def is_overridden(self, key: str) -> bool:
         return (key in self.overrides)
 
-    def remove_override(self, key):
+    def remove_override(self, key: str):
         """Remove a setting override, if one exists."""
         keys = key.split('.')
         if len(keys) > 1:
@@ -562,27 +627,27 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
             del self.overrides[key]
             self._uncache(key)
 
-    def warn(self, key):
+    def warn(self, key: str):
         """Returns True if the warning setting is enabled."""
         return (
             not self.quiet and not self.warn_none
             and (self.warn_all or getattr(self, "warn_%s" % key))
         )
 
-    def debug(self, key):
+    def debug(self, key: str):
         """Returns True if the debug setting is enabled."""
         return (
             not self.quiet and not self.debug_none
             and (self.debug_all or getattr(self, "debug_%s" % key))
         )
 
-    def debug_printer(self, key):
+    def debug_printer(self, key: str):
         """Returns a printer object suitably enabled based on the given key."""
         enabled = self.debug(key)
         return get_debug_printer(enabled)
 
     @cached_property
-    def sourced_filepaths(self):
+    def sourced_filepaths(self) -> list[str]:
         """Get the list of files actually sourced to create the config.
 
         Note:
@@ -595,10 +660,10 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
             List of str: The sourced files.
         """
         _ = self._data  # noqa; force a config load
-        return self._sourced_filepaths
+        return self._sourced_filepaths or []
 
     @cached_property
-    def plugins(self):
+    def plugins(self) -> _PluginConfigs:
         """Plugin settings are loaded lazily, to avoid loading the plugins
         until necessary."""
         plugin_data = self._data.get("plugins", {})
@@ -646,7 +711,7 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
             return []
         else:
             keys = (
-                [x for x in self._schema_keys if isinstance(x, basestring)]
+                [x for x in self._schema_keys if isinstance(x, str)]
                 + ["plugins"]
             )
             keys = [x for x in keys if x.startswith(prefix)]
@@ -654,7 +719,7 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
                 keys += _get_plugin_completions('')
             return keys
 
-    def _uncache(self, key=None):
+    def _uncache(self, key=None) -> None:
         # deleting the attribute falls up back to the class attribute, which is
         # the cached_property descriptor
         if key and hasattr(self, key):
@@ -668,7 +733,7 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
         if hasattr(self, "plugins"):
             delattr(self, "plugins")
 
-    def _swap(self, other):
+    def _swap(self, other) -> None:
         """Swap this config with another.
 
         This is used by the unit tests to swap the config to one that is
@@ -704,7 +769,7 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
         return data
 
     @classmethod
-    def _create_main_config(cls, overrides=None):
+    def _create_main_config(cls, overrides=None) -> Config:
         """See comment block at top of 'rezconfig' describing how the main
         config is assembled."""
         filepaths = []
@@ -719,11 +784,11 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
 
         return Config(filepaths, overrides)
 
-    def __str__(self):
-        keys = (x for x in self.schema._schema if isinstance(x, basestring))
+    def __str__(self) -> str:
+        keys = (x for x in self.schema._schema if isinstance(x, str))
         return "%r" % sorted(list(keys) + ["plugins"])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "%s(%s)" % (self.__class__.__name__, str(self))
 
     # -- dynamic defaults
@@ -759,14 +824,14 @@ class Config(six.with_metaclass(LazyAttributeMeta, object)):
 
 class _PluginConfigs(object):
     """Lazy config loading for plugins."""
-    def __init__(self, plugin_data):
+    def __init__(self, plugin_data) -> None:
         self.__dict__['_data'] = plugin_data
 
-    def __setattr__(self, attr, value):
+    def __setattr__(self, attr, value) -> None:
         raise AttributeError("'%s' object attribute '%s' is read-only"
                              % (self.__class__.__name__, attr))
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> RO_AttrDictWrapper:
         if attr in self.__dict__:
             return self.__dict__[attr]
 
@@ -800,7 +865,7 @@ class _PluginConfigs(object):
         from rez.plugin_managers import plugin_manager
         return iter(plugin_manager.get_plugin_types())
 
-    def override(self, key, value):
+    def override(self, key, value) -> None:
         def _nosuch():
             raise AttributeError("no such setting: %r" % '.'.join(key))
         if len(key) < 2:
@@ -835,21 +900,21 @@ class _PluginConfigs(object):
         d = convert_dicts(d, dict, (dict, AttrDictWrapper))
         return d
 
-    def __str__(self):
+    def __str__(self) -> str:
         from rez.plugin_managers import plugin_manager
         return "%r" % sorted(plugin_manager.get_plugin_types())
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "%s(%s)" % (self.__class__.__name__, str(self))
 
 
-def expand_system_vars(data):
+def expand_system_vars(data: T) -> T:
     """Expands any strings within `data` such as '{system.user}'."""
     def _expanded(value):
-        if isinstance(value, basestring):
-            value = expandvars(value)
-            value = expanduser(value)
-            return scoped_format(value, system=system)
+        if isinstance(value, str):
+            str_value = expandvars(value)
+            str_value = expanduser(str_value)
+            return scoped_format(str_value, system=system)
         elif isinstance(value, (list, tuple, set)):
             return [_expanded(x) for x in value]
         elif isinstance(value, dict):
@@ -859,7 +924,7 @@ def expand_system_vars(data):
     return _expanded(data)
 
 
-def create_config(overrides=None):
+def create_config(overrides=None) -> Config:
     """Create a configuration based on the global config.
     """
     if not overrides:
@@ -895,7 +960,7 @@ def _replace_config(other):
 
 
 @lru_cache()
-def _load_config_py(filepath):
+def _load_config_py(filepath: str) -> dict[str, Any]:
     reserved = dict(
         # Standard Python module variables
         # Made available from within the module,
@@ -929,7 +994,7 @@ def _load_config_py(filepath):
 
 
 @lru_cache()
-def _load_config_yaml(filepath):
+def _load_config_yaml(filepath: str) -> dict[str, Any]:
     with open(filepath) as f:
         content = f.read()
     try:
@@ -944,12 +1009,13 @@ def _load_config_yaml(filepath):
     return doc
 
 
-def _load_config_from_filepaths(filepaths):
+def _load_config_from_filepaths(filepaths: list[str]) -> tuple[dict[str, Any], list[str]]:
     data = {}
     sourced_filepaths = []
     loaders = ((".py", _load_config_py),
                ("", _load_config_yaml))
 
+    root_config = get_module_root_config()
     for filepath in filepaths:
         for extension, loader in loaders:
             if extension:
@@ -962,6 +1028,20 @@ def _load_config_from_filepaths(filepaths):
                 continue
 
             data_ = loader(filepath_with_ext)
+
+            if filepath != root_config:
+                for key in data_:
+                    if key in _deprecated_settings:
+                        rez.deprecations.warn(
+                            _deprecated_settings[key].get_message(
+                                key,
+                                env_var=False,
+                            ),
+                            rez.deprecations.RezDeprecationWarning,
+                            pre_formatted=True,
+                            filename=filepath_with_ext,
+                        )
+
             deep_update(data, data_)
             sourced_filepaths.append(filepath_with_ext)
             break
@@ -969,9 +1049,15 @@ def _load_config_from_filepaths(filepaths):
     return data, sourced_filepaths
 
 
-def get_module_root_config():
+def get_module_root_config() -> str:
     return os.path.join(module_root_path, "rezconfig.py")
 
 
 # singleton
 config = Config._create_main_config()
+
+if os.getenv("REZ_LOG_DEPRECATION_WARNINGS"):
+    # If REZ_LOG_DEPRECATION_WARNINGS is set, force all configs
+    # to be loaded so that we can raise warnings appropriately with all
+    # the commands, etc.
+    config.data

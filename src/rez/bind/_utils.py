@@ -5,15 +5,13 @@
 """
 Utility functions for bind modules.
 """
-from __future__ import absolute_import
-from rez.vendor.version.version import Version
+from rez.version import Version
 from rez.exceptions import RezBindError
 from rez.config import config
 from rez.util import which
 from rez.utils.execution import Popen
 from rez.utils.logging_ import print_debug
-from rez.vendor.six import six
-from pipes import quote
+from shlex import quote
 import subprocess
 import os.path
 import os
@@ -21,18 +19,14 @@ import platform
 import sys
 
 
-basestring = six.string_types[0]
-
-
-def log(msg):
+def log(msg) -> None:
     if config.debug("bind_modules"):
         print_debug(msg)
 
 
 def make_dirs(*dirs):
     path = os.path.join(*dirs)
-    if not os.path.exists(path):
-        os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
     return path
 
 
@@ -88,7 +82,7 @@ def find_exe(name, filepath=None):
     return filepath
 
 
-def extract_version(exepath, version_arg, word_index=-1, version_rank=3):
+def extract_version(exepath, version_arg, word_index=-1, version_rank: int = 3):
     """Run an executable and get the program version.
 
     Args:
@@ -100,7 +94,7 @@ def extract_version(exepath, version_arg, word_index=-1, version_rank=3):
     Returns:
         `Version` object.
     """
-    if isinstance(version_arg, basestring):
+    if isinstance(version_arg, str):
         version_arg = [version_arg]
     args = [exepath] + version_arg
 

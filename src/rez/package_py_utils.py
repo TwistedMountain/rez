@@ -10,30 +10,32 @@ including:
 - early bound functions that use the @early decorator.
 """
 
+from __future__ import annotations
+
 # these imports just forward the symbols into this module's namespace
 from rez.utils.execution import Popen
 from rez.exceptions import InvalidPackageError
-from rez.vendor.six import six
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rez.packages import Package
 
 
-basestring = six.string_types[0]
-
-
-def expand_requirement(request, paths=None):
-    """Expands a requirement string like 'python-2.*', 'foo-2.*+<*', etc.
+def expand_requirement(request: str, paths=None) -> str:
+    """Expands a requirement string like ``python-2.*``, ``foo-2.*+<*``, etc.
 
     Wildcards are expanded to the latest version that matches. There is also a
-    special wildcard '**' that will expand to the full version, but it cannot
-    be used in combination with '*'.
+    special wildcard ``**`` that will expand to the full version, but it cannot
+    be used in combination with ``*``.
 
-    Wildcards MUST placehold a whole version token, not partial - while 'foo-2.*'
-    is valid, 'foo-2.v*' is not.
+    Wildcards MUST placehold a whole version token, not partial - while ``foo-2.*``
+    is valid, ``foo-2.v*`` is not.
 
-    Wildcards MUST appear at the end of version numbers - while 'foo-1.*.*' is
-    valid, 'foo-1.*.0' is not.
+    Wildcards MUST appear at the end of version numbers - while ``foo-1.*.*`` is
+    valid, ``foo-1.*.0`` is not.
 
     It is possible that an expansion will result in an invalid request string
-    (such as 'foo-2+<2'). The appropriate exception will be raised if this
+    (such as ``foo-2+<2``). The appropriate exception will be raised if this
     happens.
 
     Examples:
@@ -46,9 +48,9 @@ def expand_requirement(request, paths=None):
         python<3.0.5
 
     Args:
-        request (str): Request to expand, eg 'python-2.*'
-        paths (list of str, optional): paths to search for package families,
-            defaults to `config.packages_path`.
+        request (str): Request to expand, eg ``python-2.*``
+        paths (typing.Optional[list[str]]): paths to search for package families,
+            defaults to :data:`packages_path`.
 
     Returns:
         str: Expanded request string.
@@ -56,8 +58,8 @@ def expand_requirement(request, paths=None):
     if '*' not in request:
         return request
 
-    from rez.vendor.version.version import VersionRange
-    from rez.vendor.version.requirement import Requirement
+    from rez.version import VersionRange
+    from rez.version import Requirement
     from rez.packages import get_latest_package
     from uuid import uuid4
 
@@ -148,7 +150,7 @@ def expand_requirement(request, paths=None):
     return str(expanded_req)
 
 
-def expand_requires(*requests):
+def expand_requires(*requests: str) -> list[str]:
     """Create an expanded requirements list.
 
     Example:
@@ -159,17 +161,24 @@ def expand_requires(*requests):
         ["boost-1.55"]
 
     Args:
-        requests (list of str): Requirements to expand. Each value may have
+        requests (list[str]): Requirements to expand. Each value may have
             trailing wildcards.
 
     Returns:
-        List of str: Expanded requirements.
+        list[str]: Expanded requirements.
     """
     return [expand_requirement(x) for x in requests]
 
 
-def exec_command(attr, cmd):
-    """Runs a subproc to calculate a package attribute.
+def exec_command(attr: str, cmd: list[str]) -> tuple[str, str]:
+    """Runs a subprocess to calculate a package attribute.
+
+    Args:
+        attr (str): Package attribute
+        cmd (list[str]): Command to run
+
+    Returns:
+        tuple(str): Returns a tuple of (stdout, stderr).
     """
     import subprocess
 
@@ -184,12 +193,12 @@ def exec_command(attr, cmd):
     return out.strip(), err.strip()
 
 
-def exec_python(attr, src, executable="python"):
+def exec_python(attr: str, src: list[str], executable="python") -> str:
     """Runs a python subproc to calculate a package attribute.
 
     Args:
         attr (str): Name of package attribute being created.
-        src (list of str): Python code to execute, will be converted into
+        src (list[str]): Python code to execute, will be converted into
             semicolon-delimited single line of code.
 
     Returns:
@@ -197,7 +206,7 @@ def exec_python(attr, src, executable="python"):
     """
     import subprocess
 
-    if isinstance(src, basestring):
+    if isinstance(src, str):
         src = [src]
 
     p = Popen([executable, "-c", "; ".join(src)],
@@ -212,7 +221,7 @@ def exec_python(attr, src, executable="python"):
     return out.strip()
 
 
-def find_site_python(module_name, paths=None):
+def find_site_python(module_name: str, paths: list[str] | None = None) -> Package:
     """Find the rez native python package that contains the given module.
 
     This function is used by python 'native' rez installers to find the native
@@ -227,11 +236,11 @@ def find_site_python(module_name, paths=None):
 
     Args:
         module_name (str): Target python module.
-        paths (list of str, optional): paths to search for packages,
-            defaults to `config.packages_path`.
+        paths (typing.Optional[list[str]]): paths to search for packages,
+            defaults to :data:`packages_path`.
 
     Returns:
-        `Package`: Native python package containing the named module.
+        Package: Native python package containing the named module.
     """
     from rez.packages import iter_packages
     import subprocess

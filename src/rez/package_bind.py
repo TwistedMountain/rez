@@ -2,7 +2,7 @@
 # Copyright Contributors to the Rez Project
 
 
-from __future__ import print_function
+from __future__ import annotations
 
 from rez.exceptions import RezBindError, _NeverError
 from rez import module_root_path
@@ -14,15 +14,20 @@ import argparse
 import os.path
 import os
 
+from typing import TYPE_CHECKING
 
-def get_bind_modules(verbose=False):
+if TYPE_CHECKING:
+    from rez.packages import Variant
+
+
+def get_bind_modules(verbose: bool = False) -> dict[str, str]:
     """Get available bind modules.
 
     Returns:
-        dict: Map of (name, filepath) listing all bind modules.
+        dict[str, str]: Map of (name, filepath) listing all bind modules.
     """
     builtin_path = os.path.join(module_root_path, "bind")
-    searchpaths = config.bind_module_path + [builtin_path]
+    searchpaths = [builtin_path] + config.bind_module_path
     bindnames = {}
 
     for path in searchpaths:
@@ -41,7 +46,7 @@ def get_bind_modules(verbose=False):
     return bindnames
 
 
-def find_bind_module(name, verbose=False):
+def find_bind_module(name: str, verbose: bool = False) -> str | None:
     """Find the bind module matching the given name.
 
     Args:
@@ -73,8 +78,9 @@ def find_bind_module(name, verbose=False):
     return None
 
 
-def bind_package(name, path=None, version_range=None, no_deps=False,
-                 bind_args=None, quiet=False):
+def bind_package(name: str, path: str | None = None, version_range=None,
+                 no_deps: bool = False, bind_args: list[str] | None = None,
+                 quiet: bool = False) -> list[Variant]:
     """Bind software available on the current system, as a rez package.
 
     Note:
@@ -85,14 +91,14 @@ def bind_package(name, path=None, version_range=None, no_deps=False,
     Args:
         name (str): Package name.
         path (str): Package path to install into; local packages path if None.
-        version_range (`VersionRange`): If provided, only bind the software if
+        version_range (rez.vendor.version.version.VersionRange): If provided, only bind the software if
             it falls within this version range.
         no_deps (bool): If True, don't bind dependencies.
         bind_args (list of str): Command line options.
         quiet (bool): If True, suppress superfluous output.
 
     Returns:
-        List of `Variant`: The variant(s) that were installed as a result of
+        list[rez.packages.Variant]: The variant(s) that were installed as a result of
         binding this package.
     """
     pending = set([name])
@@ -103,7 +109,7 @@ def bind_package(name, path=None, version_range=None, no_deps=False,
     while pending:
         pending_ = pending
         pending = set()
-        exc_type = _NeverError
+        exc_type: type[Exception] = _NeverError
 
         for name_ in pending_:
             # turn error on binding of dependencies into a warning - we don't
@@ -144,8 +150,8 @@ def bind_package(name, path=None, version_range=None, no_deps=False,
     return installed_variants
 
 
-def _bind_package(name, path=None, version_range=None, bind_args=None,
-                  quiet=False):
+def _bind_package(name: str, path: str | None = None, version_range=None, bind_args: list[str] | None = None,
+                  quiet: bool = False) -> list[Variant]:
     bindfile = find_bind_module(name, verbose=(not quiet))
     if not bindfile:
         raise RezBindError("Bind module not found for '%s'" % name)
@@ -181,7 +187,7 @@ def _bind_package(name, path=None, version_range=None, bind_args=None,
     return variants
 
 
-def _print_package_list(variants):
+def _print_package_list(variants) -> None:
     packages = set([x.parent for x in variants])
     packages = sorted(packages, key=lambda x: x.name)
 

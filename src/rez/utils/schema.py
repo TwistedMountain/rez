@@ -5,11 +5,13 @@
 """
 Utilities for working with dict-based schemas.
 """
-from rez.vendor.six import six
+from __future__ import annotations
+
 from rez.vendor.schema.schema import Schema, Optional, Use, And
+from typing import TYPE_CHECKING
 
-
-basestring = six.string_types[0]
+if TYPE_CHECKING:
+    from rez.config import Validatable
 
 
 # an alias which just so happens to be the same number of characters as
@@ -17,16 +19,18 @@ basestring = six.string_types[0]
 Required = Schema
 
 
-def schema_keys(schema):
+def schema_keys(schema) -> set[str]:
     """Get the string values of keys in a dict-based schema.
 
     Non-string keys are ignored.
 
     Returns:
-        Set of string keys of a schema which is in the form (eg):
+        set[str]: Set of string keys of a schema which is in the form (eg):
 
-            schema = Schema({Required("foo"): int,
-                             Optional("bah"): basestring})
+        .. code-block:: python
+
+           schema = Schema({Required("foo"): int,
+                            Optional("bah"): str})
     """
     def _get_leaf(value):
         if isinstance(value, Schema):
@@ -39,20 +43,20 @@ def schema_keys(schema):
 
     for key in dict_.keys():
         key_ = _get_leaf(key)
-        if isinstance(key_, basestring):
+        if isinstance(key_, str):
             keys.add(key_)
 
     return keys
 
 
-def dict_to_schema(schema_dict, required, allow_custom_keys=True, modifier=None):
+def dict_to_schema(schema_dict, required, allow_custom_keys: bool = True, modifier=None) -> Validatable:
     """Convert a dict of Schemas into a Schema.
 
     Args:
         required (bool): Whether to make schema keys optional or required.
-        allow_custom_keys (bool, optional): If True, creates a schema that
+        allow_custom_keys (typing.Optional[bool]): If True, creates a schema that
             allows custom items in dicts.
-        modifier (callable): Functor to apply to dict values - it is applied
+        modifier (typing.Optional[typing.Callable]): Functor to apply to dict values - it is applied
             via `Schema.Use`.
 
     Returns:
@@ -65,12 +69,12 @@ def dict_to_schema(schema_dict, required, allow_custom_keys=True, modifier=None)
         if isinstance(value, dict):
             d = {}
             for k, v in value.items():
-                if isinstance(k, basestring):
+                if isinstance(k, str):
                     k = Required(k) if required else Optional(k)
                 d[k] = _to(v)
             if allow_custom_keys:
-                d[Optional(basestring)] = modifier or object
-            schema = Schema(d)
+                d[Optional(str)] = modifier or object
+            schema: Validatable = Schema(d)
         elif modifier:
             schema = And(value, modifier)
         else:
@@ -87,7 +91,7 @@ def extensible_schema_dict(schema_dict):
     older rez versions, that may not support newer schema fields.
     """
     result = {
-        Optional(basestring): object
+        Optional(str): object
     }
 
     result.update(schema_dict)

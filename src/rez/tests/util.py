@@ -2,8 +2,6 @@
 # Copyright Contributors to the Rez Project
 
 
-from __future__ import print_function
-
 import unittest
 from rez import module_root_path
 from rez.config import config, _create_locked_config
@@ -18,6 +16,7 @@ import os
 import functools
 import sys
 import json
+import copy
 from contextlib import contextmanager
 
 # https://pypi.org/project/parameterized
@@ -30,15 +29,20 @@ except ImportError:
 
 class TestBase(unittest.TestCase):
     """Unit test base class."""
-    def __init__(self, *nargs, **kwargs):
+    def __init__(self, *nargs, **kwargs) -> None:
         super(TestBase, self).__init__(*nargs, **kwargs)
         self.setup_once_called = False
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         cls.settings = {}
 
-    def setUp(self):
+    def setUp(self) -> None:
+        # We have some tests that unfortunately don't clean themselves up
+        # after they are done. Store the origianl environment to be
+        # restored in tearDown
+        self.__environ = copy.deepcopy(os.environ)
+
         self.maxDiff = None
         os.environ["REZ_QUIET"] = "true"
 
@@ -51,11 +55,15 @@ class TestBase(unittest.TestCase):
             self.setup_once()
             self.setup_once_called = True
 
-    def setup_once(self):
+    def setup_once(self) -> None:
         pass
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.teardown_config()
+        os.environ = self.__environ
+        # Try to clear as much caches as possible to avoid tests
+        # leaking data into each other.
+        system.clear_caches()
 
     @classmethod
     def data_path(cls, *dirs):
@@ -67,20 +75,20 @@ class TestBase(unittest.TestCase):
     # These are moved into their own functions so update_settings can call
     # them without having to call setUp / tearDown, and without worrying
     # about future or subclass modifications to those methods...
-    def setup_config(self):
+    def setup_config(self) -> None:
         # to make sure config changes from one test don't affect another, copy
         # the overrides dict...
         self._config = _create_locked_config(dict(self.settings))
         config._swap(self._config)
 
-    def teardown_config(self):
+    def teardown_config(self) -> None:
         # moved to it's own section because it's called in update_settings...
         # so if in the future, tearDown does more than call this,
         # update_settings is still valid
         config._swap(self._config)
         self._config = None
 
-    def update_settings(self, new_settings, override=False):
+    def update_settings(self, new_settings, override: bool = False) -> None:
         """Can be called within test methods to modify settings on a
         per-test basis (as opposed cls.settings, which modifies it for all
         tests on the class)
@@ -124,15 +132,22 @@ class TestBase(unittest.TestCase):
             for k, v in self.settings.items()
         )
 
+    def inject_python_repo(self) -> None:
+        self.update_settings(
+            {
+                "packages_path": config.packages_path + [os.environ["__REZ_SELFTEST_PYTHON_REPO"]],
+            }
+        )
+
 
 class TempdirMixin(object):
     """Mixin that adds tmpdir create/delete."""
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         cls.root = tempfile.mkdtemp(prefix="rez_selftest_")
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         if os.getenv("REZ_KEEP_TMPDIRS"):
             print("Tempdir kept due to $REZ_KEEP_TMPDIRS: %s" % cls.root)
             return
@@ -154,7 +169,7 @@ class TempdirMixin(object):
                         time.sleep(0.2)
 
 
-def find_file_in_path(to_find, path_str, pathsep=None, reverse=True):
+def find_file_in_path(to_find, path_str, pathsep=None, reverse: bool = True):
     """Attempts to find the given relative path to_find in the given path
     """
     if pathsep is None:
@@ -172,33 +187,12 @@ def find_file_in_path(to_find, path_str, pathsep=None, reverse=True):
 def program_dependent(program_name, *program_names):
     """Function decorator that skips the function if not all given programs are
     visible."""
-    import subprocess
-
-    program_tests = {
-        "cmake": ['cmake', '-h'],
-        "make": ['make', '-h'],
-        "g++": ["g++", "--help"]
-    }
-
-    # test if programs all exist
-    def _test(name):
-        command = program_tests[name]
-
-        with open(os.devnull, 'wb') as DEVNULL:
-            try:
-                subprocess.check_call(command, stdout=DEVNULL, stderr=DEVNULL)
-            except (OSError, IOError, subprocess.CalledProcessError):
-                return False
-            else:
-                return True
-
     names = [program_name] + list(program_names)
-    all_exist = all(_test(x) for x in names)
 
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
-            if not all_exist:
+            if not all(shutil.which(x) for x in names):
                 self.skipTest(
                     "Requires all programs to be present and functioning: %s"
                     % names
@@ -207,6 +201,21 @@ def program_dependent(program_name, *program_names):
             return func(self, *args, **kwargs)
         return wrapper
     return decorator
+
+
+def get_available_shells():
+    """Helper to get all available shells in a testing context."""
+    shells = get_shell_types()
+
+    only_shell = os.getenv("__REZ_SELFTEST_SHELL")
+    if only_shell:
+        shells = [only_shell]
+
+    # filter to only those shells available
+    return [
+        x for x in shells
+        if get_shell_class(x).is_available()
+    ]
 
 
 def per_available_shell(exclude=None):
@@ -229,15 +238,51 @@ def per_available_shell(exclude=None):
 
     # https://pypi.org/project/parameterized
     if use_parameterized:
-        return parameterized.expand(shells)
+
+        class rez_parametrized(parameterized):
+
+            # Taken from https://github.com/wolever/parameterized/blob/b9f6a640452bcfdea08efc4badfe5bfad043f099/parameterized/parameterized.py#L612  # noqa
+            @classmethod
+            def param_as_standalone_func(cls, p, func, name):
+                # @wraps(func)
+                def standalone_func(*args, **kwargs):
+                    # Make sure to set the default shell to the requested shell. This
+                    # simplifies tests and removes the need to remember passing the shell
+                    # kward to execute_shell and co inside the tests.
+                    # Subclassing parameterized is fragile, but we can't do better for now.
+                    args[0].update_settings({"default_shell": p.args[0]})
+                    return func(*(args + p.args), **p.kwargs, **kwargs)
+
+                standalone_func.__name__ = name
+
+                # place_as is used by py.test to determine what source file should be
+                # used for this test.
+                standalone_func.place_as = func
+
+                # Remove __wrapped__ because py.test will try to look at __wrapped__
+                # to determine which parameters should be used with this test case,
+                # and obviously we don't need it to do any parameterization.
+                try:
+                    del standalone_func.__wrapped__
+                except AttributeError:
+                    pass
+                return standalone_func
+
+        return rez_parametrized.expand(shells)
 
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, shell=None):
+
             for shell in shells:
                 print("\ntesting in shell: %s..." % shell)
 
                 try:
+                    # Make sure to set the default shell to the requested shell. This
+                    # simplifies tests and removes the need to remember passing the shell
+                    # kward to execute_shell and co inside the tests.
+                    self.update_settings({"default_shell": shell})
+
                     func(self, shell=shell)
                 except Exception as e:
                     # Add the shell to the exception message, if possible.
@@ -265,7 +310,7 @@ def install_dependent():
             else:
                 self.skipTest(
                     "Must be run via 'rez-selftest' tool, see "
-                    "https://github.com/AcademySoftwareFoundation/rez/wiki/Installation#installation-script"
+                    "https://rez.readthedocs.io/en/stable/installation.html#installation-script"
                 )
         return wrapper
     return decorator

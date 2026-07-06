@@ -127,7 +127,7 @@ class Client(threading.local):
     @group Integers: incr, decr
     @group Removal: delete, delete_multi
     @sort: __init__, set_servers, forget_dead_hosts, disconnect_all,
-           debuglog,\ set, set_multi, add, replace, get, get_multi,
+           debuglog, set, set_multi, add, replace, get, get_multi,
            incr, decr, delete, delete_multi
     """
     _FLAG_PICKLE = 1 << 0
@@ -325,7 +325,8 @@ class Client(threading.local):
             readline = s.readline
             while 1:
                 line = readline()
-                if not line or line.decode('ascii').strip() == 'END':
+                # Rez: Patch for https://github.com/AcademySoftwareFoundation/rez/issues/1563.
+                if not line or line.decode('ascii').strip() in ('END', 'RESET'):
                     break
                 stats = line.decode('ascii').split(' ', 2)
                 serverData[stats[1]] = stats[2]

@@ -5,7 +5,6 @@
 """
 Binds rez itself as a rez package.
 """
-from __future__ import absolute_import
 import rez
 from rez.package_maker import make_package
 from rez.bind._utils import check_version
@@ -15,7 +14,7 @@ import shutil
 import os.path
 
 
-def commands():
+def commands() -> None:
     env.PYTHONPATH.append('{this.root}')
 
 
@@ -23,7 +22,7 @@ def bind(path, version_range=None, opts=None, parser=None):
     version = rez.__version__
     check_version(version, version_range)
 
-    def make_root(variant, root):
+    def make_root(variant, root) -> None:
         # copy source
         rez_path = rez.__path__[0]
         site_path = os.path.dirname(rez_path)
@@ -35,7 +34,7 @@ def bind(path, version_range=None, opts=None, parser=None):
     with make_package("rez", path, make_root=make_root) as pkg:
         pkg.version = version
         pkg.commands = commands
-        pkg.requires = ["python-2.7+<4"]
+        pkg.requires = ["python-3.8+<3.14"]
         pkg.variants = [system.variant]
 
     return pkg.installed_variants
