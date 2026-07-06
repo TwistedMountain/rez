@@ -25,8 +25,8 @@ from rez.rex import Action, ActionInterpreter, RexExecutor, Python, OutputStyle,
 from rez.rex_bindings import VersionBinding, VariantBinding, \
     VariantsBinding, RequirementsBinding, EphemeralsBinding, intersects
 from rez import package_order
-from rez.package_hander import PackageHandler
 from rez.packages import get_variant, iter_packages, Package, Variant
+from rez.package_hander import PackageHandler
 from rez.package_filter import PackageFilterList
 from rez.package_order import PackageOrder, PackageOrderList
 from rez.package_cache import PackageCache
